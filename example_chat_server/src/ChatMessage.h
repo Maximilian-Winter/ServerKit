@@ -6,6 +6,7 @@
 
 #include "BinaryData.h"
 #include <string>
+#include <utility>
 
 namespace NetworkMessages {
 
@@ -15,10 +16,10 @@ namespace NetworkMessages {
         std::string message;
 
         ChatMessage() = default;
-        ChatMessage(const std::string& username, const std::string& message)
-                : username(username), message(message) {}
+        ChatMessage(std::string username, std::string message)
+                : username(std::move(username)), message(std::move(message)) {}
 
-        std::vector<byte> serialize() const override {
+        [[nodiscard]] std::vector<byte> serialize() const override {
             std::vector<byte> data;
             append_bytes(data, username);
             append_bytes(data, message);
@@ -27,12 +28,12 @@ namespace NetworkMessages {
 
         void deserialize(const std::vector<byte>& data) override {
             size_t offset = 0;
-            username = read_bytes(data, offset);
-            message = read_bytes(data, offset);
+            username = read_bytes<std::string>(data, offset);
+            message = read_bytes<std::string>(data, offset);
         }
 
-        int ByteSize() const override {
-            return 4 + username.size() + 4 + message.size();
+        [[nodiscard]] int ByteSize() const override {
+            return 4 + (int)username.size() + 4 + (int)message.size();
         }
     };
 

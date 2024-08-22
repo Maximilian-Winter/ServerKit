@@ -1,15 +1,23 @@
 cmake_minimum_required(VERSION 3.15)
 project(common)
 
-add_library(common STATIC
-        src/Logger.cpp
-)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-target_include_directories(common PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+# Glob all header files in the include directory
+file(GLOB HEADER_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp)
 
-target_compile_options(common PRIVATE ${COMMON_COMPILE_OPTIONS})
+# Add library target
+add_library(common INTERFACE)
 
-target_link_libraries(common PUBLIC ${COMMON_LINK_LIBRARIES})
+# Set include directories for the target
+target_include_directories(common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# Add header files to the target
+target_sources(common INTERFACE ${HEADER_FILES})
+
+# Set compile options
+target_compile_options(common INTERFACE ${COMMON_COMPILE_OPTIONS})
+
+# Link libraries
+target_link_libraries(common INTERFACE ${COMMON_LINK_LIBRARIES})

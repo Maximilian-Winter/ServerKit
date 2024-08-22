@@ -1,7 +1,8 @@
 {
-  "server_host": "167.235.54.77",
+  "server_host": "127.0.0.1",
   "server_port": 8080,
   "thread_count": 4,
   "log_level": "INFO",
-  "log_file": "chat_server.log"
+  "log_file": "chat_server.log",
+  "max_log_file_size_in_mb": 1
 }

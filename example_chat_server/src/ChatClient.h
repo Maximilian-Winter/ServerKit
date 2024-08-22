@@ -11,31 +11,26 @@
 
 class ChatClient : public ClientBase {
 public:
-    ChatClient(const std::string& config_file, const std::string& username)
-            : ClientBase(config_file), m_username(username) {}
+    ChatClient(const std::string& config_file)
+            : ClientBase(config_file), m_username()
+            {
+                m_username = m_config.get<std::string> ("user_name", "Unknown");
+            }
 
     void run() {
         connect();
-
-        std::thread input_thread([this]() {
+        while (true) {
             std::string input;
-            while (m_connected) {
-                std::getline(std::cin, input);
-                if (input == "quit") {
-                    disconnect();
-                    break;
-                }
-                if (!input.empty()) {
-                    m_thread_pool->get_io_context().post([this, input]() {
-                        sendChatMessage(input);
-                    });
-                }
+            std::getline(std::cin, input);
+            if (input == "quit") {
+                disconnect();
+                break;
             }
-        });
-
-        m_thread_pool->run();
-        if (input_thread.joinable()) {
-            input_thread.join();
+            if (!input.empty()) {
+                m_thread_pool->get_io_context().post([this, input]() {
+                    sendChatMessage(input);
+                });
+            }
         }
     }
 

@@ -48,7 +48,6 @@ endfunction()
 # Add subdirectories
 add_subdirectory(common)
 add_subdirectory(example_chat_server)
-add_subdirectory(example_chat_client)
 
 # Print include directories for debugging
 get_property(dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES)

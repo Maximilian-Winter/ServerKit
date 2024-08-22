@@ -30,8 +30,53 @@ namespace NetworkMessages
         // Deserialize from a byte vector
         virtual void deserialize(const std::vector<byte> &data) = 0;
 
-        virtual int ByteSize() const = 0;
+        [[nodiscard]] virtual int ByteSize() const = 0;
 
+    protected:
+        // Serialization helpers
+        template<typename T>
+        static void append_bytes(std::vector<byte> &vec, const T &data)
+        {
+            if constexpr (std::is_same_v<T, std::vector<byte>>) {
+                append_byte_vector(vec, data);
+            } else
+            {
+                auto bytes = to_bytes(data);
+                vec.insert(vec.end(), bytes.begin(), bytes.end());
+            }
+
+        }
+
+        template<typename T>
+        static T read_bytes(const std::vector<byte>& data, size_t& offset)
+        {
+            if constexpr (std::is_same_v<T, std::string>) {
+                return read_string_from_bytes(data, offset);
+            }
+            if (offset + sizeof(T) > data.size())
+            {
+                throw std::runtime_error("Not enough data to read");
+            }
+
+            // Check if the offset and sizeof(T) are too large for the system's ptrdiff_t
+            if (offset + sizeof(T) > static_cast<size_t>(std::numeric_limits<std::ptrdiff_t>::max()))
+            {
+                throw std::runtime_error("Data size too large for this system");
+            }
+
+            // Use ptrdiff_t for iterator arithmetic
+            auto start = data.begin() + static_cast<std::ptrdiff_t>(offset);
+            auto end = start + static_cast<std::ptrdiff_t>(sizeof(T));
+
+            T value = from_bytes<T>(std::vector<byte>(start, end));
+            from_network_order(value);  // Convert from network byte order to host byte order
+            offset += sizeof(T);
+            return value;
+        }
+
+    private:
+
+        // Convert network order helpers
         template<typename T>
         static void to_network_order(T& value) {
             if (!is_little_endian()) {
@@ -52,8 +97,7 @@ namespace NetworkMessages
             static const int32_t i = 1;
             return *reinterpret_cast<const int8_t*>(&i) == 1;
         }
-    protected:
-        // Serialization helpers
+
         template<typename T>
         static std::vector<byte> to_bytes(const T& object) {
             if constexpr (std::is_same_v<T, std::string>) {
@@ -83,33 +127,12 @@ namespace NetworkMessages
             }
         }
 
-
-        static void append_bytes(std::vector<byte> &vec, const std::vector<byte> &data)
+        static void append_byte_vector(std::vector<byte> &vec, const std::vector<byte> &data)
         {
             vec.insert(vec.end(), data.begin(), data.end());
         }
 
-        template<typename T>
-        static void append_bytes(std::vector<byte> &vec, const T &data)
-        {
-            auto bytes = to_bytes(data);
-            vec.insert(vec.end(), bytes.begin(), bytes.end());
-        }
-
-        template<typename T>
-        static T read_bytes(const std::vector<byte> &data, size_t &offset)
-        {
-            if (offset + sizeof(T) > data.size())
-            {
-                throw std::runtime_error("Not enough data to read");
-            }
-            T value = from_bytes<T>(std::vector<byte>(data.begin() + offset, data.begin() + offset + sizeof(T)));
-            from_network_order(value);  // Convert from network byte order to host byte order
-            offset += sizeof(T);
-            return value;
-        }
-
-        static std::string read_bytes(const std::vector<byte>& data, size_t& offset) {
+        static std::string read_string_from_bytes(const std::vector<byte>& data, size_t& offset) {
             if (offset + sizeof(uint32_t) > data.size()) {
                 throw std::runtime_error("Not enough data to read string length");
             }
@@ -123,18 +146,20 @@ namespace NetworkMessages
                 throw std::runtime_error("Not enough data to read string content");
             }
 
-            std::string value(data.begin() + offset, data.begin() + offset + network_length);
+            if (offset + network_length > static_cast<size_t>(std::numeric_limits<std::ptrdiff_t>::max())) {
+                throw std::runtime_error("String length too large for this system");
+            }
+
+            auto start = data.begin() + static_cast<std::ptrdiff_t>(offset);
+            auto end = start + static_cast<std::ptrdiff_t>(network_length);
+            std::string value(start, end);
+
             offset += network_length;
             return value;
         }
-
-
-
-    private:
-
         static std::vector<byte> string_to_bytes(const std::string& str) {
             std::vector<byte> bytes;
-            uint32_t length = static_cast<uint32_t>(str.length());
+            auto length = static_cast<uint32_t>(str.length());
             bytes.reserve(sizeof(uint32_t) + length);
 
             // Directly append the length in network byte order
@@ -163,7 +188,7 @@ namespace NetworkMessages
             }
 
             // Extract the string content
-            return std::string(bytes.begin() + sizeof(uint32_t), bytes.begin() + sizeof(uint32_t) + network_length);
+            return {bytes.begin() + sizeof(uint32_t), bytes.begin() + sizeof(uint32_t) + network_length};
         }
     };
 
@@ -186,7 +211,7 @@ namespace NetworkMessages
         }
 
 
-        int ByteSize() const override
+        [[nodiscard]] int ByteSize() const override
         {
             return 2;
         }
@@ -203,7 +228,7 @@ namespace NetworkMessages
             static_assert(std::is_base_of_v<BinaryData, T>, "T must inherit from BinaryData");
         }
 
-        std::vector<byte> serialize() const override
+        [[nodiscard]] std::vector<byte> serialize() const override
         {
             std::vector<byte> data;
             MessageTypeData typeData;
@@ -227,12 +252,12 @@ namespace NetworkMessages
             std::vector<byte> payloadData(data.begin() + sizeof(short), data.end());
             messagePayload.deserialize(payloadData);
         }
-        int ByteSize() const override
+        [[nodiscard]] int ByteSize() const override
         {
             return 2 + messagePayload.ByteSize();
         }
 
-        short getMessageType() const
+        [[nodiscard]] short getMessageType() const
         { return messageType; }
 
         const T &getPayload() const
@@ -247,11 +272,8 @@ namespace NetworkMessages
     {
     public:
         std::string ErrorMessage;
-        int ByteSize() const override
-        {
-            return 4 + (int)ErrorMessage.size();
-        }
-        std::vector<byte> serialize() const override
+
+        [[nodiscard]] std::vector<byte> serialize() const override
         {
             std::vector<byte> data;
             append_bytes(data, ErrorMessage);
@@ -262,12 +284,17 @@ namespace NetworkMessages
         void deserialize(const std::vector<byte> &data) override
         {
             size_t offset = 0;
-            ErrorMessage = read_bytes(data, offset);
+            ErrorMessage = read_bytes<std::string>(data, offset);
+        }
+        [[nodiscard]] int ByteSize() const override
+        {
+            return 4 + (int)ErrorMessage.size();
         }
     };
+
     template<typename T>
     std::unique_ptr<BinaryMessage<T>> createMessage(short type, const T &payload)
     {
-        return std::make_unique<BinaryMessage<T>>(static_cast<short>(type), payload);
+        return std::make_unique<BinaryMessage<T>>(type, payload);
     }
 }

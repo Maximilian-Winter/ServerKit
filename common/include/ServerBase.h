@@ -18,7 +18,7 @@
 
 class ServerBase {
 public:
-    ServerBase(const std::string& config_file)
+    explicit ServerBase(const std::string& config_file)
             : m_config(), m_thread_pool(), m_acceptor(nullptr) {
         if (!m_config.load(config_file)) {
             LOG_FATAL("Failed to load configuration file: %s", config_file.c_str());
@@ -76,11 +76,14 @@ private:
         m_port = m_config.get<int>("server_port", 8080);
         int thread_count = m_config.get<int>("thread_count", 0);
 
-        std::string log_level = m_config.get<std::string>("log_level", "INFO");
-        std::string log_file = m_config.get<std::string>("log_file", "server.log");
+        auto log_level = m_config.get<std::string>("log_level", "INFO");
+        auto log_file = m_config.get<std::string>("log_file", "server.log");
+        auto log_file_size_in_mb = m_config.get<float>("max_log_file_size_in_mb", 1.0f);
+        auto& logger = AsyncLogger::getInstance();
 
-        Logger::getInstance().setLogLevel(Logger::getInstance().parseLogLevel(log_level));
-        Logger::getInstance().setLogFile(log_file);
+        logger.setLogLevel(AsyncLogger::parseLogLevel(log_level));
+        logger.addDestination(std::make_shared<AsyncLogger::ConsoleDestination>());
+        logger.addDestination(std::make_shared<AsyncLogger::FileDestination>(log_file, log_file_size_in_mb * (1024 * 1024))); // Convert from megabytes to bytes.
 
         m_thread_pool = std::make_unique<AsioThreadPool>(thread_count);
 
@@ -116,6 +119,6 @@ private:
     std::unique_ptr<AsioThreadPool> m_thread_pool;
     std::unique_ptr<asio::ip::tcp::acceptor> m_acceptor;
     std::string m_host;
-    int m_port;
+    int m_port{};
     std::unordered_map<std::string, std::shared_ptr<NetworkUtility::Session>> m_sessions;
 };
