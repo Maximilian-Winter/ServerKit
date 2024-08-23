@@ -54,6 +54,12 @@ public:
             return socket_.remote_endpoint();
         }
 
+        bool shouldClose(const HTTPMessage& message) const {
+            const HTTPHeader& header = message.getHeaders();
+            std::string connection = header.getHeader("Connection");
+            return (connection == "close" || (message.getVersion() == "HTTP/1.0" && connection != "keep-alive"));
+        }
+
         void close() {
             asio::post(strand_, [this]() {
                 std::error_code ec;

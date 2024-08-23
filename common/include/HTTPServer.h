@@ -90,7 +90,7 @@ private:
             }
 
             // Continue reading from this connection if it's a keep-alive connection
-            if (shouldKeepAlive(message)) {
+            if (!connection->shouldClose(message)) {
                 handleConnection(connection);
             } else {
                 connection->close();
@@ -112,7 +112,7 @@ private:
         sendResponse(connection, response);
     }
 
-    bool shouldKeepAlive(HTTPMessage& request) {
+    bool shouldKeepAlive(const HTTPMessage& request) {
         const HTTPHeader& header = request.getHeaders();
         std::string connection = header.getHeader("Connection");
         return (connection == "keep-alive" || (request.getVersion() == "HTTP/1.1" && connection != "close"));

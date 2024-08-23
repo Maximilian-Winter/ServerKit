@@ -83,7 +83,7 @@ private:
         m_thread_pool = std::make_unique<AsioThreadPool>(thread_count);
     }
 
-    std::future<HTTPMessage> sendHttpRequest(HTTPHeader::Method method, const std::string& url, const std::string& body = "FUCK YOU!") {
+    std::future<HTTPMessage> sendHttpRequest(HTTPHeader::Method method, const std::string& url, const std::string& body = "") {
         HTTPMessage request;
         request.setMethod(method);
 
@@ -92,7 +92,9 @@ private:
 
         request.setVersion("HTTP/1.1");
         request.addHeader("Host", httpUrl.getHost());
-        request.addHeader("Connection", "close");
+
+        // Change this line
+        request.addHeader("Connection", "keep-alive");
 
         if (!body.empty()) {
             HTTPBody httpBody;
@@ -103,7 +105,9 @@ private:
             request.addHeader("Content-Type", "text/plain");
         }
 
-        return sendRequest(request);
+        auto future = sendRequest(request);
+
+        return future;
     }
 
     Config m_config;
