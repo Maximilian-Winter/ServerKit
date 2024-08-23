@@ -20,7 +20,7 @@
 class TCPClientBase {
 public:
     explicit TCPClientBase(const std::string& config_file)
-            : m_config(), m_thread_pool(nullptr), m_connection(nullptr), m_connected(false) {
+            : m_config(), m_thread_pool(nullptr), m_session(nullptr), m_connected(false) {
         if (!m_config.load(config_file)) {
             LOG_FATAL("Failed to load configuration file: %s", config_file.c_str());
             throw std::runtime_error("Failed to load configuration file");
@@ -42,9 +42,9 @@ public:
         LOG_INFO("Connecting to server %s:%d", m_host.c_str(), m_port);
 
         TCPNetworkUtility::connect(m_thread_pool->get_io_context(), m_host, std::to_string(m_port),
-                                [this](std::error_code ec, std::shared_ptr<TCPNetworkUtility::Connection> connection) {
+                                [this](std::error_code ec, const std::shared_ptr<TCPNetworkUtility::Connection>& connection) {
                                     if (!ec) {
-                                        m_connection = std::move(connection);
+                                        m_session = TCPNetworkUtility::createSession(m_thread_pool->get_io_context(), connection->socket());
                                         m_connected.store(true);
                                         LOG_INFO("Connected to server");
                                         onConnected();
@@ -61,8 +61,8 @@ public:
     void disconnect() {
         if (m_connected.exchange(false)) {
             LOG_INFO("Disconnecting from server");
-            if (m_connection) {
-                m_connection->close();
+            if (m_session) {
+                m_session->close();
             }
             if (m_thread_pool) {
                 m_thread_pool->stop();
@@ -72,8 +72,8 @@ public:
     }
 
     void sendMessage(const std::vector<uint8_t>& message) {
-        if (m_connected && m_connection) {
-            m_connection->write(message);
+        if (m_connected && m_session) {
+            m_session->write(message);
         } else {
             LOG_ERROR("Cannot send message: not connected");
         }
@@ -115,8 +115,8 @@ protected:
     }
 
     void startRead() {
-        if (m_connected && m_connection) {
-            m_connection->read([this](const std::vector<uint8_t>& message) {
+        if (m_connected && m_session) {
+            m_session->connection()->read([this](const std::vector<uint8_t>& message) {
                 handleMessage(message);
                 startRead();  // Continue reading
             });
@@ -125,7 +125,7 @@ protected:
 
     Config m_config;
     std::unique_ptr<AsioThreadPool> m_thread_pool;
-    std::shared_ptr<TCPNetworkUtility::Connection> m_connection;
+    std::shared_ptr<TCPNetworkUtility::Session> m_session;
     std::string m_host;
     int m_port{};
     std::atomic<bool> m_connected;

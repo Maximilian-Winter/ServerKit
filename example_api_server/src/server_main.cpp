@@ -1,7 +1,7 @@
 //
 // Created by maxim on 23.08.2024.
 //
-#include "ServerBase.h"
+#include "TCPServerBase.h"
 #include "BinaryData.h"
 #include <nlohmann/json.hpp>
 
@@ -37,12 +37,12 @@ public:
     }
 };
 
-class JsonApiServer : public ServerBase {
+class JsonApiServer : public TCPServerBase {
 public:
-    explicit JsonApiServer(const std::string& config_file) : ServerBase(config_file) {}
+    explicit JsonApiServer(const std::string& config_file) : TCPServerBase(config_file) {}
 
 protected:
-    void handleMessage(const std::shared_ptr<NetworkUtility::Session>& session, const std::vector<uint8_t>& message) override {
+    void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& message) override {
         auto binary_message = std::make_unique<NetworkMessages::BinaryMessage<JsonMessage>>(0, JsonMessage());
         binary_message->deserialize(message);
 
@@ -60,7 +60,7 @@ protected:
     }
 
 private:
-    void handleJsonRequest(const std::shared_ptr<NetworkUtility::Session>& session, const json& request) {
+    void handleJsonRequest(const std::shared_ptr<TCPNetworkUtility::Session>& session, const json& request) {
         try {
             // Process the request based on its content
             if (request.contains("action")) {
@@ -85,14 +85,14 @@ private:
         }
     }
 
-    void sendJsonResponse(const std::shared_ptr<NetworkUtility::Session>& session, const json& response) {
+    void sendJsonResponse(const std::shared_ptr<TCPNetworkUtility::Session>& session, const json& response) {
         JsonMessage json_message;
         json_message.data = response;
         auto binary_message = NetworkMessages::createMessage(static_cast<short>(MessageType::JsonResponse), json_message);
         session->write(binary_message->serialize());
     }
 
-    void sendErrorResponse(const std::shared_ptr<NetworkUtility::Session>& session, const std::string& error_message) {
+    void sendErrorResponse(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::string& error_message) {
         NetworkMessages::Error error;
         error.ErrorMessage = error_message;
         auto binary_message = NetworkMessages::createMessage(static_cast<short>(MessageType::Error), error);

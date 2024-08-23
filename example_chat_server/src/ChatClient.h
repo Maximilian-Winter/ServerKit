@@ -1,21 +1,21 @@
-//
-// Created by maxim on 21.08.2024.
-//
-
 #pragma once
 
 #include "TCPClientBase.h"
 #include "ChatMessage.h"
+#include "MessageHandler.h"
 #include <iostream>
 #include <thread>
 
 class ChatClient : public TCPClientBase {
 public:
-    ChatClient(const std::string& config_file)
+    explicit ChatClient(const std::string& config_file)
             : TCPClientBase(config_file), m_username()
-            {
-                m_username = m_config.get<std::string> ("user_name", "Unknown");
-            }
+    {
+        m_username = m_config.get<std::string>("user_name", "Unknown");
+        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) {
+            handleChatMessage(data);
+        });
+    }
 
     void run() {
         connect();
@@ -36,20 +36,13 @@ public:
 
 protected:
     void handleMessage(const std::vector<uint8_t>& data) override {
-        try {
-            auto message = NetworkMessages::BinaryMessage<NetworkMessages::ChatMessage>(0, NetworkMessages::ChatMessage());
-            message.deserialize(data);
-
-            const auto& chatMessage = message.getPayload();
-            std::cout << chatMessage.username << ": " << chatMessage.message << std::endl;
-        } catch (const std::exception& e) {
-            LOG_ERROR("Error handling message: %s", e.what());
-        }
+        m_messageHandler.handleMessage(m_session, data);
     }
 
     void onConnected() override {
         TCPClientBase::onConnected();
-        std::cout << "Connected to chat server. Type your messages or 'quit' to exit." << std::endl;
+
+        std::cout << "Type your messages or 'quit' to exit." << std::endl;
     }
 
     void onDisconnected() override {
@@ -63,6 +56,18 @@ protected:
     }
 
 private:
+    void handleChatMessage(const std::vector<uint8_t>& data) {
+        try {
+            auto message = NetworkMessages::BinaryMessage<NetworkMessages::ChatMessage>(0, NetworkMessages::ChatMessage());
+            message.deserialize(data);
+
+            const auto& chatMessage = message.getPayload();
+            std::cout << chatMessage.username << ": " << chatMessage.message << std::endl;
+        } catch (const std::exception& e) {
+            LOG_ERROR("Error handling chat message: %s", e.what());
+        }
+    }
+
     void sendChatMessage(const std::string& message) {
         NetworkMessages::ChatMessage chatMessage(m_username, message);
         auto binaryMessage = NetworkMessages::createMessage(0, chatMessage);
@@ -70,4 +75,5 @@ private:
     }
 
     std::string m_username;
+    TCPMessageHandler m_messageHandler;
 };

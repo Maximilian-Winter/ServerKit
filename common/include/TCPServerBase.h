@@ -16,9 +16,9 @@
 #include <unordered_map>
 #include <functional>
 
-class ServerBase {
+class TCPServerBase {
 public:
-    explicit ServerBase(const std::string& config_file)
+    explicit TCPServerBase(const std::string& config_file)
             : m_config(), m_thread_pool(), m_acceptor(nullptr) {
         if (!m_config.load(config_file)) {
             LOG_FATAL("Failed to load configuration file: %s", config_file.c_str());
@@ -28,7 +28,7 @@ public:
         initializeServer();
     }
 
-    virtual ~ServerBase() {
+    virtual ~TCPServerBase() {
         stop();
     }
 
@@ -52,13 +52,13 @@ public:
     }
 
 protected:
-    virtual void handleMessage(const std::shared_ptr<NetworkUtility::Session>& session, const std::vector<uint8_t>& message) = 0;
+    virtual void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& message) = 0;
 
-    virtual void onClientConnected(const std::shared_ptr<NetworkUtility::Session>& session) {
+    virtual void onClientConnected(const std::shared_ptr<TCPNetworkUtility::Session>& session) {
         LOG_INFO("New client connected: %s", session->connection()->remoteEndpoint().address().to_string().c_str());
     }
 
-    virtual void onClientDisconnected(const std::shared_ptr<NetworkUtility::Session>& session) {
+    virtual void onClientDisconnected(const std::shared_ptr<TCPNetworkUtility::Session>& session) {
         LOG_INFO("Client disconnected: %s", session->connection()->remoteEndpoint().address().to_string().c_str());
     }
 
@@ -99,8 +99,8 @@ private:
         m_acceptor->async_accept(
                 [this](std::error_code ec, asio::ip::tcp::socket socket) {
                     if (!ec) {
-                        auto session = NetworkUtility::createSession(m_thread_pool->get_io_context(), socket);
-                        m_sessions[session->connection()->remoteEndpoint().address().to_string()] = session;
+                        auto session = TCPNetworkUtility::createSession(m_thread_pool->get_io_context(), socket);
+                        m_sessions[session->getConnectionUuid()] = session;
 
                         onClientConnected(session);
 
@@ -120,5 +120,5 @@ private:
     std::unique_ptr<asio::ip::tcp::acceptor> m_acceptor;
     std::string m_host;
     int m_port{};
-    std::unordered_map<std::string, std::shared_ptr<NetworkUtility::Session>> m_sessions;
+    std::unordered_map<std::string, std::shared_ptr<TCPNetworkUtility::Session>> m_sessions;
 };

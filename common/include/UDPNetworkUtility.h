@@ -11,25 +11,28 @@
 #include <deque>
 #include <mutex>
 
+#include "Logger.h"
+#include "Utilities.h"
+
 class UDPNetworkUtility {
 public:
-    class UDPConnection : public std::enable_shared_from_this<UDPConnection> {
+    class Connection : public std::enable_shared_from_this<Connection> {
     public:
-        explicit UDPConnection(asio::io_context& io_context)
+        explicit Connection(asio::io_context& io_context)
                 : socket_(io_context), strand_(asio::make_strand(io_context)), read_buffer_(65507) {}
 
-        static std::shared_ptr<UDPConnection> create(asio::io_context& io_context) {
-            return std::make_shared<UDPConnection>(io_context);
+        static std::shared_ptr<Connection> create(asio::io_context& io_context) {
+            return std::make_shared<Connection>(io_context);
         }
 
         asio::ip::udp::socket& socket() { return socket_; }
 
         void send_to(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& endpoint) {
-            LOG_DEBUG("UDPConnection::send_to called. Message size: %zu", message.size());
+            LOG_DEBUG("Connection::send_to called. Message size: %zu", message.size());
 
             asio::post(strand_, [this, message, endpoint]() {
                 bool write_in_progress = !write_queue_.empty();
-                write_queue_.push_back({message, endpoint});
+                write_queue_.emplace_back(message, endpoint);
                 if (!write_in_progress) {
                     do_write();
                 }
@@ -37,7 +40,7 @@ public:
         }
 
         void receive(const std::function<void(const std::vector<uint8_t>&, const asio::ip::udp::endpoint&)>& callback) {
-            LOG_DEBUG("UDPConnection::receive called");
+            LOG_DEBUG("Connection::receive called");
             asio::post(strand_, [this, callback]() mutable {
                 do_receive(callback);
             });
@@ -100,10 +103,10 @@ public:
         std::deque<std::pair<std::vector<uint8_t>, asio::ip::udp::endpoint>> write_queue_;
     };
 
-    class UDPSession : public std::enable_shared_from_this<UDPSession> {
+    class Session : public std::enable_shared_from_this<Session> {
     public:
-        explicit UDPSession(std::shared_ptr<UDPConnection> connection)
-                : connection_(std::move(connection)) {}
+        explicit Session(std::shared_ptr<Connection> connection)
+                : connection_(std::move(connection)), connection_uuid(Utilities::generateUuid()) {}
 
         void start(const std::function<void(const std::vector<uint8_t>&, const asio::ip::udp::endpoint&)>& messageHandler) {
             if (!connection_) {
@@ -121,7 +124,12 @@ public:
             }
         }
 
-        std::shared_ptr<UDPConnection> connection() const {
+        std::string getConnectionUuid()
+        {
+            return connection_uuid;
+        }
+
+        std::shared_ptr<Connection> connection() const {
             return connection_;
         }
 
@@ -132,14 +140,15 @@ public:
         }
 
     private:
-        std::shared_ptr<UDPConnection> connection_;
+        std::shared_ptr<Connection> connection_;
+        std::string connection_uuid;
     };
 
-    static std::shared_ptr<UDPConnection> udp_connect(asio::io_context& io_context,
+    static std::shared_ptr<Connection> connect(asio::io_context& io_context,
                                                       const std::string& host,
                                                       const std::string& port,
-                                                      std::function<void(std::error_code, std::shared_ptr<UDPConnection>)> callback) {
-        auto connection = UDPConnection::create(io_context);
+                                                      std::function<void(std::error_code, std::shared_ptr<Connection>)> callback) {
+        auto connection = Connection::create(io_context);
 
         asio::ip::udp::resolver resolver(io_context);
         auto endpoints = resolver.resolve(host, port);
@@ -152,14 +161,14 @@ public:
         return connection;
     }
 
-    static std::shared_ptr<UDPConnection> createUDPConnection(asio::io_context& io_context) {
-        return UDPConnection::create(io_context);
+    static std::shared_ptr<Connection> createConnection(asio::io_context& io_context) {
+        return Connection::create(io_context);
     }
 
-    static std::shared_ptr<UDPSession> createUDPSession(asio::io_context& io_context) {
-        auto connection = createUDPConnection(io_context);
+    static std::shared_ptr<Session> createSession(asio::io_context& io_context) {
+        auto connection = createConnection(io_context);
         connection->socket().open(asio::ip::udp::v4());
-        return std::make_shared<UDPSession>(connection);
+        return std::make_shared<Session>(connection);
     }
 };
 

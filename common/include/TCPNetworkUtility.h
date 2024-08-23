@@ -7,6 +7,9 @@
 #include <deque>
 #include <mutex>
 
+#include "Utilities.h"
+#include "Logger.h"
+
 class TCPNetworkUtility {
 public:
     class Connection : public std::enable_shared_from_this<Connection> {
@@ -129,14 +132,14 @@ public:
         asio::ip::tcp::socket socket_;
         asio::strand<asio::io_context::executor_type> strand_;
         std::vector<uint8_t> read_buffer_;
-        uint8_t header_buffer_[4];
+        uint8_t header_buffer_[4]{};
         std::deque<std::vector<uint8_t>> write_queue_;
     };
 
     class Session : public std::enable_shared_from_this<Session> {
     public:
         explicit Session(std::shared_ptr<Connection> connection)
-                : connection_(std::move(connection)) {}
+                : connection_(std::move(connection)), connection_uuid(Utilities::generateUuid()) {}
 
         void start(const std::function<void(const std::vector<uint8_t>&)>& messageHandler) {
             if (!connection_) {
@@ -154,6 +157,10 @@ public:
             }
         }
 
+        std::string getConnectionUuid()
+        {
+            return connection_uuid;
+        }
         std::shared_ptr<Connection> connection() const {
             return connection_;
         }
@@ -166,6 +173,7 @@ public:
 
     private:
         std::shared_ptr<Connection> connection_;
+        std::string connection_uuid;
     };
 
     static std::shared_ptr<Connection> connect(asio::io_context& io_context,
