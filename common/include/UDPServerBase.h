@@ -30,9 +30,7 @@ public:
         initializeServer();
     }
 
-    virtual ~UDPServerBase() {
-        stop();
-    }
+    virtual ~UDPServerBase() = default;
 
     void start() {
         if (!m_thread_pool) {
@@ -86,7 +84,7 @@ private:
         m_thread_pool = std::make_unique<AsioThreadPool>(thread_count);
 
         asio::ip::udp::endpoint endpoint(asio::ip::make_address(m_host), m_port);
-        m_session = UDPNetworkUtility::createUDPSession(m_thread_pool->get_io_context());
+        m_session = UDPNetworkUtility::createSession(m_thread_pool->get_io_context());
         m_session->connection()->socket().open(endpoint.protocol());
         m_session->connection()->socket().bind(endpoint);
     }
@@ -101,7 +99,7 @@ private:
 
     Config m_config;
     std::unique_ptr<AsioThreadPool> m_thread_pool;
-    std::shared_ptr<UDPNetworkUtility::UDPSession> m_session;
+    std::shared_ptr<UDPNetworkUtility::Session> m_session;
     std::string m_host;
     int m_port{};
 };

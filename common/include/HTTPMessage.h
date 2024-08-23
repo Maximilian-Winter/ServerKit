@@ -8,7 +8,7 @@
 #include "HTTPHeader.h"
 #include "HTTPBody.h"
 
-class HTTPMessage : public NetworkMessages::HTTPBinaryData
+class HTTPMessage
 {
 public:
 
@@ -30,39 +30,23 @@ public:
     void setStatusCode(int statusCode) { m_headers.m_statusCode = statusCode; }
     void setStatusMessage(const std::string& statusMessage) { m_headers.m_statusMessage = statusMessage; }
 
-    [[nodiscard]] const HTTPHeader& getHeaders() const { return m_headers; }
+    [[nodiscard]] const HTTPHeader& getHeader() const { return m_headers; }
     [[nodiscard]] const HTTPBody& getBody() const { return m_body; }
 
-    [[nodiscard]] std::vector<uint8_t> serialize() override {
-        reset_byte_size();
+    [[nodiscard]] std::vector<uint8_t> serialize()  {
         std::vector<uint8_t> data;
 
         // Serialize headers
         auto headerData = m_headers.serialize();
         data.insert(data.end(), headerData.begin(), headerData.end());
-        addToByteSize(m_headers.ByteSize());
 
         // Serialize body
         auto bodyData = m_body.serialize();
         data.insert(data.end(), bodyData.begin(), bodyData.end());
-        addToByteSize(m_body.ByteSize());
 
         return data;
     }
 
-    void deserialize(const std::vector<uint8_t>& data) override {
-        size_t offset = 0;
-
-        // Deserialize headers
-        std::vector<uint8_t> headerData(data.begin() + offset, data.end());
-        m_headers.deserialize(headerData);
-        m_headers.serialize();
-        offset += m_headers.ByteSize();
-
-        // Deserialize body
-        std::vector<uint8_t> bodyData(data.begin() + offset, data.end());
-        m_body.deserialize(bodyData);
-    }
 
 private:
 

@@ -64,7 +64,6 @@ public:
     }
 
     [[nodiscard]] std::vector<uint8_t> serialize() override {
-        reset_byte_size();
         std::vector<uint8_t> data;
         std::string startLine;
 

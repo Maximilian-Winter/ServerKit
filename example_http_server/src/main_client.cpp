@@ -12,7 +12,7 @@ int main() {
         std::cout << "Response: HTTP/" << response.getVersion() << " "
                   << response.getStatusCode() << " " << response.getStatusMessage() << std::endl;
 
-        for (const auto& [key, value] : response.getHeaders().getHeaders()) {
+        for (const auto& [key, value] : response.getHeader().getHeaders()) {
             std::cout << key << ": " << value << std::endl;
         }
 
@@ -20,5 +20,6 @@ int main() {
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
+    client.disconnect();
     return 0;
 }

@@ -1,44 +1,14 @@
 //
 // Created by maxim on 23.08.2024.
 //
-#include "TCPClientBase.h"
-#include "BinaryData.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <future>
 #include <mutex>
 
-using json = nlohmann::json;
-
-// Define message types for our JSON API (same as in the server)
-enum class MessageType : short {
-    JsonRequest = 1,
-    JsonResponse = 2,
-    Error = 3
-};
-
-// Custom BinaryData classes for JSON messages (same as in the server)
-class JsonMessage : public NetworkMessages::BinaryData {
-public:
-    json data;
-
-    std::vector<byte> serialize() const override {
-        std::string json_str = data.dump();
-        std::vector<byte> result;
-        NetworkMessages::BinaryData::append_bytes(result, json_str);
-        return result;
-    }
-
-    void deserialize(const std::vector<byte>& data) override {
-        size_t offset = 0;
-        std::string json_str = NetworkMessages::BinaryData::read_bytes<std::string>(data, offset);
-        this->data = json::parse(json_str);
-    }
-
-    [[nodiscard]] int ByteSize() const override {
-        return 4 + data.dump().size(); // 4 bytes for string length + JSON string
-    }
-};
+#include "TCPClientBase.h"
+#include "BinaryData.h"
+#include "JsonMessage.h"
 
 class JsonApiClient : public TCPClientBase {
 public:
@@ -49,7 +19,7 @@ public:
         auto future = promise->get_future();
 
         JsonMessage json_message;
-        json_message.data = request;
+        json_message.json_data = request;
         auto binary_message = NetworkMessages::createMessage(static_cast<short>(MessageType::JsonRequest), json_message);
         sendMessage(binary_message->serialize());
 
@@ -71,13 +41,13 @@ protected:
             switch (message_type) {
                 case MessageType::JsonResponse:
                     if (!m_pending_requests.empty()) {
-                        m_pending_requests.front()->set_value(payload.data);
+                        m_pending_requests.front()->set_value(payload.json_data);
                         m_pending_requests.pop_front();
                     }
                     break;
                 case MessageType::Error:
                     if (!m_pending_requests.empty()) {
-                        m_pending_requests.front()->set_exception(std::make_exception_ptr(std::runtime_error(payload.data["error"].get<std::string>())));
+                        m_pending_requests.front()->set_exception(std::make_exception_ptr(std::runtime_error(payload.json_data["error"].get<std::string>())));
                         m_pending_requests.pop_front();
                     }
                     break;

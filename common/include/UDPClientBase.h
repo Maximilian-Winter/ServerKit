@@ -39,7 +39,7 @@ public:
 
         LOG_INFO("Setting up UDP client for server %s:%d", m_host.c_str(), m_port);
 
-        m_session = UDPNetworkUtility::createUDPSession(m_thread_pool->get_io_context());
+        m_session = UDPNetworkUtility::createSession(m_thread_pool->get_io_context());
         m_connected.store(true);
         LOG_INFO("UDP session created");
         onConnected();
@@ -111,7 +111,7 @@ protected:
 
     Config m_config;
     std::unique_ptr<AsioThreadPool> m_thread_pool;
-    std::shared_ptr<UDPNetworkUtility::UDPSession> m_session;
+    std::shared_ptr<UDPNetworkUtility::Session> m_session;
     std::string m_host;
     int m_port{};
     std::atomic<bool> m_connected;

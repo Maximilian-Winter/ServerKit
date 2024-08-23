@@ -31,9 +31,6 @@ namespace NetworkMessages
         // Deserialize from a byte vector
         virtual void deserialize(const std::vector<byte> &data) = 0;
 
-        [[nodiscard]] int ByteSize() const {
-            return m_byteSize;
-        }
 
     protected:
         // Serialization helpers
@@ -42,12 +39,10 @@ namespace NetworkMessages
         {
             if constexpr (std::is_same_v<T, std::vector<byte>>) {
                 append_byte_vector(vec, data);
-                m_byteSize += data.size();
             } else
             {
                 auto bytes = to_bytes(data);
                 vec.insert(vec.end(), bytes.begin(), bytes.end());
-                m_byteSize += bytes.size();
             }
 
         }
@@ -79,15 +74,7 @@ namespace NetworkMessages
             return value;
         }
 
-        void addToByteSize(int size)
-        {
-            m_byteSize += size;
-        }
-        void reset_byte_size() {
-            m_byteSize = 0;
-        }
     private:
-        int m_byteSize;
         // Convert network order helpers
         template<typename T>
         static void to_network_order(T& value) {
@@ -143,8 +130,6 @@ namespace NetworkMessages
         {
             vec.insert(vec.end(), data.begin(), data.end());
         }
-
-
 
         static std::vector<byte> string_to_bytes(const std::string& str) {
             std::vector<byte> bytes;
@@ -267,18 +252,12 @@ namespace NetworkMessages
         // Deserialize from a byte vector
         virtual void deserialize(const std::vector<byte> &data) = 0;
 
-        [[nodiscard]] int ByteSize() const {
-            return m_byteSize;
-        }
-
     protected:
 
-        void append_bytes(std::vector<byte> &vec, const std::string &data)
+        static void append_bytes(std::vector<byte> &vec, const std::string &data)
         {
             auto bytes = string_to_bytes(data);
             vec.insert(vec.end(), bytes.begin(), bytes.end());
-            m_byteSize += bytes.size();
-
         }
 
         static std::string read_bytes(const std::vector<byte>& data, int& offset) {
@@ -306,16 +285,7 @@ namespace NetworkMessages
             return result;
         }
 
-        void addToByteSize(int size)
-        {
-            m_byteSize += size;
-        }
-        void reset_byte_size() {
-            m_byteSize = 0;
-        }
     private:
-        int m_byteSize;
-
 
         static std::vector<byte> string_to_bytes(const std::string& str) {
             std::vector<byte> bytes;
@@ -387,7 +357,6 @@ namespace NetworkMessages
 
         [[nodiscard]] std::vector<byte> serialize() override
         {
-            reset_byte_size();
             std::vector<byte> data;
             MessageTypeData typeData;
             typeData.Type = messageType;
@@ -429,10 +398,8 @@ namespace NetworkMessages
 
         [[nodiscard]] std::vector<byte> serialize() override
         {
-            reset_byte_size();
             std::vector<byte> data;
             append_bytes(data, ErrorMessage);
-
             return data;
         }
 

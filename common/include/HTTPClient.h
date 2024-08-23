@@ -6,6 +6,7 @@
 #include "Config.h"
 #include <future>
 #include <memory>
+#include <utility>
 
 class HTTPClient {
 public:
@@ -59,7 +60,7 @@ public:
         HTTPNetworkUtility::connect(m_thread_pool->get_io_context(), host, port,
                                     [this, connect_promise](std::error_code ec, std::shared_ptr<HTTPNetworkUtility::Connection> connection) {
                                         if (!ec) {
-                                            m_connection = connection;
+                                            m_connection = std::move(connection);
                                             connect_promise->set_value();
                                         } else {
                                             connect_promise->set_exception(std::make_exception_ptr(std::runtime_error(ec.message())));
@@ -100,8 +101,8 @@ private:
             HTTPBody httpBody;
             httpBody.setContent(body);
             request.setBody(httpBody);
-            httpBody.serialize();
-            request.addHeader("Content-Length", std::to_string(httpBody.ByteSize()));
+            std::vector<uint8_t> serializedBody = httpBody.serialize();
+            request.addHeader("Content-Length", std::to_string(serializedBody.size()));
             request.addHeader("Content-Type", "text/plain");
         }
 

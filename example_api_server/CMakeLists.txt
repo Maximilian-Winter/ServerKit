@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Server
 add_executable(api_server
-        src/server_main.cpp
+        src/main_server.cpp
 )
 
 target_include_directories(api_server PRIVATE
@@ -27,7 +27,7 @@ set_target_properties(api_server PROPERTIES
 
 # Client
 add_executable(api_client
-        src/client_main.cpp
+        src/main_client.cpp
 )
 
 target_include_directories(api_client PRIVATE

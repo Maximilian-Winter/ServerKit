@@ -7,6 +7,7 @@
 #include <functional>
 #include <unordered_map>
 #include <memory>
+#include <utility>
 
 class HTTPServer {
 public:
@@ -75,8 +76,8 @@ private:
                 });
     }
 
-    void handleConnection(std::shared_ptr<HTTPNetworkUtility::Connection> connection) {
-        connection->read([this, connection](HTTPMessage message) {
+    void handleConnection(const std::shared_ptr<HTTPNetworkUtility::Connection>& connection) {
+        connection->read([this, connection](const HTTPMessage& message) {
 
             HTTPHeader::Method method = message.getMethod();
             std::string path = message.getUrl().getPath();
@@ -98,11 +99,11 @@ private:
         });
     }
 
-    void sendResponse(std::shared_ptr<HTTPNetworkUtility::Connection> connection, HTTPMessage& response) {
+    static void sendResponse(const std::shared_ptr<HTTPNetworkUtility::Connection>& connection, HTTPMessage& response) {
         connection->write(response);
     }
 
-    void sendNotFoundResponse(std::shared_ptr<HTTPNetworkUtility::Connection> connection) {
+    static void sendNotFoundResponse(std::shared_ptr<HTTPNetworkUtility::Connection> connection) {
         HTTPMessage response;
         response.setVersion("HTTP/1.1");
         response.setStatusCode(404);
@@ -112,8 +113,8 @@ private:
         sendResponse(connection, response);
     }
 
-    bool shouldKeepAlive(const HTTPMessage& request) {
-        const HTTPHeader& header = request.getHeaders();
+    static bool shouldKeepAlive(const HTTPMessage& request) {
+        const HTTPHeader& header = request.getHeader();
         std::string connection = header.getHeader("Connection");
         return (connection == "keep-alive" || (request.getVersion() == "HTTP/1.1" && connection != "close"));
     }

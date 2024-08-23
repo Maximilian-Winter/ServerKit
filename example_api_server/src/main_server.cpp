@@ -3,39 +3,9 @@
 //
 #include "TCPServerBase.h"
 #include "BinaryData.h"
-#include <nlohmann/json.hpp>
+#include "JsonMessage.h"
 
-using json = nlohmann::json;
 
-// Define message types for our JSON API
-enum class MessageType : short {
-    JsonRequest = 1,
-    JsonResponse = 2,
-    Error = 3
-};
-
-// Custom BinaryData classes for JSON messages
-class JsonMessage : public NetworkMessages::BinaryData {
-public:
-    json data;
-
-    std::vector<byte> serialize() const override {
-        std::string json_str = data.dump();
-        std::vector<byte> result;
-        NetworkMessages::BinaryData::append_bytes(result, json_str);
-        return result;
-    }
-
-    void deserialize(const std::vector<byte>& data) override {
-        size_t offset = 0;
-        std::string json_str = NetworkMessages::BinaryData::read_bytes<std::string>(data, offset);
-        this->data = json::parse(json_str);
-    }
-
-    [[nodiscard]] int ByteSize() const override {
-        return 4 + data.dump().size(); // 4 bytes for string length + JSON string
-    }
-};
 
 class JsonApiServer : public TCPServerBase {
 public:
@@ -51,7 +21,7 @@ protected:
 
         switch (message_type) {
             case MessageType::JsonRequest:
-                handleJsonRequest(session, payload.data);
+                handleJsonRequest(session, payload.json_data);
                 break;
             default:
                 sendErrorResponse(session, "Invalid message type");
@@ -87,7 +57,7 @@ private:
 
     void sendJsonResponse(const std::shared_ptr<TCPNetworkUtility::Session>& session, const json& response) {
         JsonMessage json_message;
-        json_message.data = response;
+        json_message.json_data = response;
         auto binary_message = NetworkMessages::createMessage(static_cast<short>(MessageType::JsonResponse), json_message);
         session->write(binary_message->serialize());
     }

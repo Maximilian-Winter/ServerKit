@@ -47,10 +47,30 @@ public:
         }
 
         void close() {
-            asio::post(strand_, [this]() {
+            asio::post(strand_, [this, self = shared_from_this()]() {
+                if (!socket_.is_open()) {
+                    return;  // Socket is already closed
+                }
+
                 std::error_code ec;
+
+                // Cancel any pending asynchronous operations
+                socket_.cancel(ec);
+                if (ec) {
+                    LOG_ERROR("Error cancelling pending operations: %s", ec.message().c_str());
+                }
+
+                // Shutdown the socket
+                socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+                if (ec && ec != asio::error::not_connected) {
+                    LOG_ERROR("Error shutting down socket: %s", ec.message().c_str());
+                }
+
+                // Close the socket
                 socket_.close(ec);
-                if (ec) LOG_ERROR("Error closing UDP socket: %s", ec.message().c_str());
+                if (ec) {
+                    LOG_ERROR("Error closing socket: %s", ec.message().c_str());
+                }
             });
         }
 
