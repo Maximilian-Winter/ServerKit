@@ -9,6 +9,8 @@
 #include <functional>
 #include <filesystem>
 #include <memory>
+#include <iostream>
+#include <fstream>
 
 class AsyncLogger {
 public:

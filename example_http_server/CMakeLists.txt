@@ -1,48 +1,46 @@
 cmake_minimum_required(VERSION 3.15)
-project(api_server)
+project(http_server)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
 # Server
-add_executable(api_server
+add_executable(http_server
         src/server_main.cpp
 )
 
-target_include_directories(api_server PRIVATE
+target_include_directories(http_server PRIVATE
         ${CMAKE_SOURCE_DIR}/common/include
 )
 
-target_link_libraries(api_server PRIVATE
+target_link_libraries(http_server PRIVATE
         common
         ${COMMON_LINK_LIBRARIES}
 )
 
-target_compile_options(api_server PRIVATE ${COMMON_COMPILE_OPTIONS})
+target_compile_options(http_server PRIVATE ${COMMON_COMPILE_OPTIONS})
 
-set_target_properties(api_server PROPERTIES
+set_target_properties(http_server PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
 
 # Client
-add_executable(api_client
+add_executable(http_client
         src/client_main.cpp
 )
 
-target_include_directories(api_client PRIVATE
+target_include_directories(http_client PRIVATE
         ${CMAKE_SOURCE_DIR}/common/include
 )
 
-target_link_libraries(api_client PRIVATE
+target_link_libraries(http_client PRIVATE
         common
         ${COMMON_LINK_LIBRARIES}
 )
 
-target_compile_options(api_client PRIVATE ${COMMON_COMPILE_OPTIONS})
+target_compile_options(http_client PRIVATE ${COMMON_COMPILE_OPTIONS})
 
-set_target_properties(api_client PROPERTIES
+set_target_properties(http_client PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
-
-

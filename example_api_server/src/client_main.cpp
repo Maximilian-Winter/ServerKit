@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <future>
+#include <mutex>
 
 using json = nlohmann::json;
 
@@ -65,26 +66,30 @@ protected:
         auto message_type = static_cast<MessageType>(binary_message->getMessageType());
         const auto& payload = binary_message->getPayload();
 
-        switch (message_type) {
-            case MessageType::JsonResponse:
-                if (!m_pending_requests.empty()) {
-                    m_pending_requests.front()->set_value(payload.data);
-                    m_pending_requests.pop_front();
-                }
-                break;
-            case MessageType::Error:
-                if (!m_pending_requests.empty()) {
-                    m_pending_requests.front()->set_exception(std::make_exception_ptr(std::runtime_error(payload.data["error"].get<std::string>())));
-                    m_pending_requests.pop_front();
-                }
-                break;
-            default:
-                std::cerr << "Received unexpected message type: " << static_cast<int>(message_type) << std::endl;
-                break;
+        {
+            std::lock_guard<std::mutex> lock(pending_requests_mutex);
+            switch (message_type) {
+                case MessageType::JsonResponse:
+                    if (!m_pending_requests.empty()) {
+                        m_pending_requests.front()->set_value(payload.data);
+                        m_pending_requests.pop_front();
+                    }
+                    break;
+                case MessageType::Error:
+                    if (!m_pending_requests.empty()) {
+                        m_pending_requests.front()->set_exception(std::make_exception_ptr(std::runtime_error(payload.data["error"].get<std::string>())));
+                        m_pending_requests.pop_front();
+                    }
+                    break;
+                default:
+                    std::cerr << "Received unexpected message type: " << static_cast<int>(message_type) << std::endl;
+                    break;
+            }
         }
     }
 
 private:
+    std::mutex pending_requests_mutex;
     std::deque<std::shared_ptr<std::promise<json>>> m_pending_requests;
 };
 
@@ -97,7 +102,8 @@ int main(int argc, char* argv[]) {
     try {
         JsonApiClient client(argv[1]);
         client.connect();
-
+        std::cout << "API client started. Press Enter to send request." << std::endl;
+        std::cin.get();
         // Echo request
         json echo_request = {
                 {"action", "echo"},

@@ -109,6 +109,10 @@ int main(int argc, char* argv[]) {
     try {
         JsonApiServer server(argv[1]);
         server.start();
+        std::cout << "API server started. Press Enter to stop the server." << std::endl;
+        std::cin.get();
+
+        server.stop();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
