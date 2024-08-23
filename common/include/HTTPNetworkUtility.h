@@ -30,19 +30,20 @@ public:
 
         asio::ip::tcp::socket& socket() { return socket_; }
 
-        void write(const std::vector<uint8_t>& message) {
-            LOG_DEBUG("Connection::write called. Message size: %zu", message.size());
+        void write(HTTPMessage& message) {
+            std::vector<uint8_t> messageData = message.serialize();
+            LOG_DEBUG("Connection::write called. Message size: %zu", messageData.size());
 
-            asio::post(strand_, [this, message = message]() mutable {
+            asio::post(strand_, [this, messageData = messageData]() mutable {
                 bool write_in_progress = !write_queue_.empty();
-                write_queue_.push_back(std::move(message));
+                write_queue_.push_back(messageData);
                 if (!write_in_progress) {
                     do_write();
                 }
             });
         }
 
-        void read(const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void read(const std::function<void(HTTPMessage httpMessage)>& callback) {
             LOG_DEBUG("Connection::read called");
             asio::post(strand_, [this, callback]() mutable {
                 do_read_headers(callback);
@@ -81,7 +82,7 @@ public:
                               }));
         }
 
-        void do_read_headers(const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void do_read_headers(const std::function<void(HTTPMessage httpMessage)>& callback) {
             auto self = shared_from_this();
             asio::async_read_until(
                     socket_,
@@ -93,10 +94,11 @@ public:
                             read_buffer_.erase(read_buffer_.begin(), read_buffer_.begin() + bytes_transferred);
 
                             if (line == "\r\n") {
-                                // End of headers reached
+                                //headers_.insert(headers_.end(), line.begin(), line.end());
                                 process_headers(callback);
                             } else {
                                 // Continue reading headers
+                                headers_.insert(headers_.end(), line.begin(), line.end());
                                 do_read_headers(callback);
                             }
                         } else {
@@ -106,7 +108,7 @@ public:
                     });
         }
 
-        void process_headers(const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void process_headers(const std::function<void(HTTPMessage httpMessage)>& callback) {
             std::string header_string(headers_.begin(), headers_.end());
             size_t content_length = parse_content_length(header_string);
             bool is_chunked = is_chunked_encoding(header_string);
@@ -114,25 +116,50 @@ public:
 
             if (is_chunked) {
                 do_read_chunked([this, callback](const std::vector<uint8_t>& body) {
-                    std::vector<uint8_t> full_message = headers_;
-                    full_message.insert(full_message.end(), body.begin(), body.end());
-                    callback(full_message);
+                    HTTPHeader httpHeader;
+                    httpHeader.deserialize(headers_);
+                    HTTPBody httpBody;
+                    httpBody.deserialize(body);
+
+                    HTTPMessage httpMessage;
+                    httpMessage.setHeader(httpHeader);
+                    httpMessage.setBody(httpBody);
+                    callback(httpMessage);
                 });
             } else if (content_length > 0) {
                 do_read_body(content_length, [this, callback](const std::vector<uint8_t>& body) {
-                    std::vector<uint8_t> full_message = headers_;
-                    full_message.insert(full_message.end(), body.begin(), body.end());
-                    callback(full_message);
+                    HTTPHeader httpHeader;
+                    httpHeader.deserialize(headers_);
+                    HTTPBody httpBody;
+                    httpBody.deserialize(body);
+
+                    HTTPMessage httpMessage;
+                    httpMessage.setHeader(httpHeader);
+                    httpMessage.setBody(httpBody);
+                    callback(httpMessage);
                 });
             } else if (close_connection) {
                 do_read_until_close([this, callback](const std::vector<uint8_t>& body) {
-                    std::vector<uint8_t> full_message = headers_;
-                    full_message.insert(full_message.end(), body.begin(), body.end());
-                    callback(full_message);
+                    HTTPHeader httpHeader;
+                    httpHeader.deserialize(headers_);
+                    HTTPBody httpBody;
+                    httpBody.deserialize(body);
+
+                    HTTPMessage httpMessage;
+                    httpMessage.setHeader(httpHeader);
+                    httpMessage.setBody(httpBody);
+                    callback(httpMessage);
                 });
             } else {
                 // No body, just return the headers
-                callback(headers_);
+                HTTPHeader httpHeader;
+                httpHeader.deserialize(headers_);
+                HTTPBody httpBody;
+
+                HTTPMessage httpMessage;
+                httpMessage.setHeader(httpHeader);
+                httpMessage.setBody(httpBody);
+                callback(httpMessage);
             }
         }
 

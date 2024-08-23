@@ -14,7 +14,7 @@
 #include <stdexcept>
 
 #include <cstdint>
-#include "HTTPMessage.h"
+
 
 namespace NetworkMessages
 {
@@ -254,6 +254,107 @@ namespace NetworkMessages
         }
     };
 
+    class HTTPBinaryData
+    {
+    public:
+        using byte = std::uint8_t;
+
+        virtual ~HTTPBinaryData() = default;
+
+        // Serialize the message to a byte vector
+        [[nodiscard]] virtual std::vector<byte> serialize() = 0;
+
+        // Deserialize from a byte vector
+        virtual void deserialize(const std::vector<byte> &data) = 0;
+
+        [[nodiscard]] int ByteSize() const {
+            return m_byteSize;
+        }
+
+    protected:
+
+        void append_bytes(std::vector<byte> &vec, const std::string &data)
+        {
+            auto bytes = string_to_bytes(data);
+            vec.insert(vec.end(), bytes.begin(), bytes.end());
+            m_byteSize += bytes.size();
+
+        }
+
+        static std::string read_bytes(const std::vector<byte>& data, int& offset) {
+            std::string result;
+            size_t start = offset;
+            size_t end = data.size();
+
+            // Find the next "\r\n"
+            for (size_t i = start; i < end - 1; ++i) {
+                if (data[i] == '\r' && data[i + 1] == '\n') {
+                    end = i;
+                    break;
+                }
+            }
+
+            // Extract the string
+            result.reserve(end - start);
+            for (size_t i = start; i < end; ++i) {
+                result.push_back(static_cast<char>(data[i]));
+            }
+
+            // Update the offset
+            offset = static_cast<int>(end + 2); // +2 to skip "\r\n"
+
+            return result;
+        }
+
+        void addToByteSize(int size)
+        {
+            m_byteSize += size;
+        }
+        void reset_byte_size() {
+            m_byteSize = 0;
+        }
+    private:
+        int m_byteSize;
+
+
+        static std::vector<byte> string_to_bytes(const std::string& str) {
+            std::vector<byte> bytes;
+            size_t utf8_length = 0;
+            std::string newStr = str + "\r\n";
+            // First pass: calculate UTF-8 length
+            for (char32_t c : newStr) {
+                if (c <= 0x7F) utf8_length += 1;
+                else if (c <= 0x7FF) utf8_length += 2;
+                else if (c <= 0xFFFF) utf8_length += 3;
+                else utf8_length += 4;
+            }
+
+            // Reserve space for length and UTF-8 data
+            bytes.reserve(utf8_length);
+
+            // Second pass: encode to UTF-8
+            for (char32_t c : newStr) {
+                if (c <= 0x7F) {
+                    bytes.push_back(static_cast<byte>(c));
+                } else if (c <= 0x7FF) {
+                    bytes.push_back(static_cast<byte>(0xC0 | (c >> 6)));
+                    bytes.push_back(static_cast<byte>(0x80 | (c & 0x3F)));
+                } else if (c <= 0xFFFF) {
+                    bytes.push_back(static_cast<byte>(0xE0 | (c >> 12)));
+                    bytes.push_back(static_cast<byte>(0x80 | ((c >> 6) & 0x3F)));
+                    bytes.push_back(static_cast<byte>(0x80 | (c & 0x3F)));
+                } else {
+                    bytes.push_back(static_cast<byte>(0xF0 | (c >> 18)));
+                    bytes.push_back(static_cast<byte>(0x80 | ((c >> 12) & 0x3F)));
+                    bytes.push_back(static_cast<byte>(0x80 | ((c >> 6) & 0x3F)));
+                    bytes.push_back(static_cast<byte>(0x80 | (c & 0x3F)));
+                }
+            }
+
+            return bytes;
+        }
+
+    };
     class MessageTypeData : BinaryData
     {
     public:

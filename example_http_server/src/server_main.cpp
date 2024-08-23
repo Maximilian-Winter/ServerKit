@@ -4,8 +4,8 @@
 int main() {
     HTTPServer server("chat_server_config.json");
 
-    server.setRequestHandler(HTTPMessage::Method::GET_METHOD, "/", [](const HTTPMessage& request) {
-        HTTPMessage response(HTTPMessage::Type::RESPONSE);
+    server.setRequestHandler(HTTPHeader::Method::GET_METHOD, "/", [](const HTTPMessage& request) {
+        HTTPMessage response;
         response.setVersion("HTTP/1.1");
         response.setStatusCode(200);
         response.setStatusMessage("OK");
@@ -15,8 +15,8 @@ int main() {
         HTTPBody httpBody;
         httpBody.setContent(body);
         response.setBody(httpBody);
-
-        response.addHeader("Content-Length", std::to_string(body.length()));
+        httpBody.serialize();
+        response.addHeader("Content-Length", std::to_string(httpBody.ByteSize()));
         return response;
     });
 

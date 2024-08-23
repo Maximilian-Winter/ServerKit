@@ -21,7 +21,7 @@ public:
         initializeServer();
     }
 
-    void setRequestHandler(HTTPMessage::Method method, const std::string& path, RequestHandler handler) {
+    void setRequestHandler(HTTPHeader::Method method, const std::string& path, RequestHandler handler) {
         m_handlers[{method, path}] = std::move(handler);
     }
 
@@ -76,23 +76,21 @@ private:
     }
 
     void handleConnection(std::shared_ptr<HTTPNetworkUtility::Connection> connection) {
-        connection->read([this, connection](const std::vector<uint8_t>& message) {
-            HTTPMessage request(HTTPMessage::Type::REQUEST);
-            request.deserialize(message);
+        connection->read([this, connection](HTTPMessage message) {
 
-            HTTPMessage::Method method = request.getMethod();
-            std::string path = request.getUrl().getPath();
+            HTTPHeader::Method method = message.getMethod();
+            std::string path = message.getUrl().getPath();
 
             auto it = m_handlers.find({method, path});
             if (it != m_handlers.end()) {
-                HTTPMessage response = it->second(request);
+                HTTPMessage response = it->second(message);
                 sendResponse(connection, response);
             } else {
                 sendNotFoundResponse(connection);
             }
 
             // Continue reading from this connection if it's a keep-alive connection
-            if (shouldKeepAlive(request)) {
+            if (shouldKeepAlive(message)) {
                 handleConnection(connection);
             } else {
                 connection->close();
@@ -101,12 +99,11 @@ private:
     }
 
     void sendResponse(std::shared_ptr<HTTPNetworkUtility::Connection> connection, HTTPMessage& response) {
-        std::vector<uint8_t> serialized_response = response.serialize();
-        connection->write(serialized_response);
+        connection->write(response);
     }
 
     void sendNotFoundResponse(std::shared_ptr<HTTPNetworkUtility::Connection> connection) {
-        HTTPMessage response(HTTPMessage::Type::RESPONSE);
+        HTTPMessage response;
         response.setVersion("HTTP/1.1");
         response.setStatusCode(404);
         response.setStatusMessage("Not Found");
@@ -128,7 +125,7 @@ private:
     int m_port{};
 
     struct HandlerKey {
-        HTTPMessage::Method method;
+        HTTPHeader::Method method;
         std::string path;
 
         bool operator==(const HandlerKey& other) const {

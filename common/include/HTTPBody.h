@@ -4,7 +4,7 @@
 #include <string>
 #include "BinaryData.h"
 
-class HTTPBody : public NetworkMessages::BinaryData {
+class HTTPBody : public NetworkMessages::HTTPBinaryData {
 public:
     void setContent(const std::string& content) {
         m_content = content;
@@ -22,8 +22,12 @@ public:
     }
 
     void deserialize(const std::vector<uint8_t>& data) override {
-        size_t offset = 0;
-        m_content = read_bytes<std::string>(data, offset);
+        int offset = 0;
+        while (offset < data.size())
+        {
+            m_content += read_bytes(data, offset);
+        }
+
     }
 
 private:

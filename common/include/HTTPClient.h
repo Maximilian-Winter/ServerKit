@@ -27,12 +27,9 @@ public:
             return future;
         }
 
-        std::vector<uint8_t> serialized_request = request.serialize();
-        m_connection->write(serialized_request);
+        m_connection->write(request);
 
-        m_connection->read([promise](const std::vector<uint8_t>& response_data) {
-            HTTPMessage response(HTTPMessage::Type::RESPONSE);
-            response.deserialize(response_data);
+        m_connection->read([promise](const HTTPMessage& response) {
             promise->set_value(response);
         });
 
@@ -40,19 +37,19 @@ public:
     }
 
     std::future<HTTPMessage> get(const std::string& url) {
-        return sendHttpRequest(HTTPMessage::Method::GET_METHOD, url);
+        return sendHttpRequest(HTTPHeader::Method::GET_METHOD, url);
     }
 
     std::future<HTTPMessage> post(const std::string& url, const std::string& body) {
-        return sendHttpRequest(HTTPMessage::Method::POST_METHOD, url, body);
+        return sendHttpRequest(HTTPHeader::Method::POST_METHOD, url, body);
     }
 
     std::future<HTTPMessage> put(const std::string& url, const std::string& body) {
-        return sendHttpRequest(HTTPMessage::Method::PUT_METHOD, url, body);
+        return sendHttpRequest(HTTPHeader::Method::PUT_METHOD, url, body);
     }
 
     std::future<HTTPMessage> del(const std::string& url) {
-        return sendHttpRequest(HTTPMessage::Method::DELETE_METHOD, url);
+        return sendHttpRequest(HTTPHeader::Method::DELETE_METHOD, url);
     }
 
     void connect(const std::string& host, const std::string& port) {
@@ -86,8 +83,8 @@ private:
         m_thread_pool = std::make_unique<AsioThreadPool>(thread_count);
     }
 
-    std::future<HTTPMessage> sendHttpRequest(HTTPMessage::Method method, const std::string& url, const std::string& body = "") {
-        HTTPMessage request(HTTPMessage::Type::REQUEST);
+    std::future<HTTPMessage> sendHttpRequest(HTTPHeader::Method method, const std::string& url, const std::string& body = "FUCK YOU!") {
+        HTTPMessage request;
         request.setMethod(method);
 
         HTTPUrl httpUrl(url);
@@ -103,7 +100,7 @@ private:
             request.setBody(httpBody);
             httpBody.serialize();
             request.addHeader("Content-Length", std::to_string(httpBody.ByteSize()));
-            request.addHeader("Content-Type", "application/x-www-form-urlencoded");
+            request.addHeader("Content-Type", "text/plain");
         }
 
         return sendRequest(request);

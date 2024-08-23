@@ -19,7 +19,8 @@ namespace NetworkMessages {
         ChatMessage(std::string username, std::string message)
                 : username(std::move(username)), message(std::move(message)) {}
 
-        [[nodiscard]] std::vector<byte> serialize() const override {
+        [[nodiscard]] std::vector<byte> serialize() override {
+            reset_byte_size();
             std::vector<byte> data;
             append_bytes(data, username);
             append_bytes(data, message);
@@ -32,9 +33,6 @@ namespace NetworkMessages {
             message = read_bytes<std::string>(data, offset);
         }
 
-        [[nodiscard]] int ByteSize() const override {
-            return 4 + (int)username.size() + 4 + (int)message.size();
-        }
     };
 
 }  // namespace NetworkMessages
