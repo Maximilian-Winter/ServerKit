@@ -8,7 +8,7 @@
 #include "BinaryData.h"
 #include "Config.h"
 #include "Logger.h"
-#include "NetworkUtility.h"
+#include "TCPNetworkUtility.h"
 
 #include <asio.hpp>
 #include <memory>

@@ -47,6 +47,7 @@ endfunction()
 
 # Add subdirectories
 add_subdirectory(common)
+add_subdirectory(example_api_server)
 add_subdirectory(example_chat_server)
 
 # Print include directories for debugging

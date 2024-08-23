@@ -8,7 +8,7 @@
 #include "BinaryData.h"
 #include "Config.h"
 #include "Logger.h"
-#include "NetworkUtility.h"
+#include "TCPNetworkUtility.h"
 
 #include <asio.hpp>
 #include <memory>
@@ -17,9 +17,9 @@
 #include <atomic>
 #include <utility>
 
-class ClientBase {
+class TCPClientBase {
 public:
-    explicit ClientBase(const std::string& config_file)
+    explicit TCPClientBase(const std::string& config_file)
             : m_config(), m_thread_pool(nullptr), m_connection(nullptr), m_connected(false) {
         if (!m_config.load(config_file)) {
             LOG_FATAL("Failed to load configuration file: %s", config_file.c_str());
@@ -29,7 +29,7 @@ public:
         initializeClient();
     }
 
-    virtual ~ClientBase() {
+    virtual ~TCPClientBase() {
         disconnect();
     }
 
@@ -41,8 +41,8 @@ public:
 
         LOG_INFO("Connecting to server %s:%d", m_host.c_str(), m_port);
 
-        NetworkUtility::connect(m_thread_pool->get_io_context(), m_host, std::to_string(m_port),
-                                [this](std::error_code ec, std::shared_ptr<NetworkUtility::Connection> connection) {
+        TCPNetworkUtility::connect(m_thread_pool->get_io_context(), m_host, std::to_string(m_port),
+                                [this](std::error_code ec, std::shared_ptr<TCPNetworkUtility::Connection> connection) {
                                     if (!ec) {
                                         m_connection = std::move(connection);
                                         m_connected.store(true);
@@ -125,7 +125,7 @@ protected:
 
     Config m_config;
     std::unique_ptr<AsioThreadPool> m_thread_pool;
-    std::shared_ptr<NetworkUtility::Connection> m_connection;
+    std::shared_ptr<TCPNetworkUtility::Connection> m_connection;
     std::string m_host;
     int m_port{};
     std::atomic<bool> m_connected;

@@ -7,7 +7,7 @@
 #include <deque>
 #include <mutex>
 
-class NetworkUtility {
+class TCPNetworkUtility {
 public:
     class Connection : public std::enable_shared_from_this<Connection> {
     public:

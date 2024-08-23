@@ -4,15 +4,15 @@
 
 #pragma once
 
-#include "ClientBase.h"
+#include "TCPClientBase.h"
 #include "ChatMessage.h"
 #include <iostream>
 #include <thread>
 
-class ChatClient : public ClientBase {
+class ChatClient : public TCPClientBase {
 public:
     ChatClient(const std::string& config_file)
-            : ClientBase(config_file), m_username()
+            : TCPClientBase(config_file), m_username()
             {
                 m_username = m_config.get<std::string> ("user_name", "Unknown");
             }
@@ -48,17 +48,17 @@ protected:
     }
 
     void onConnected() override {
-        ClientBase::onConnected();
+        TCPClientBase::onConnected();
         std::cout << "Connected to chat server. Type your messages or 'quit' to exit." << std::endl;
     }
 
     void onDisconnected() override {
-        ClientBase::onDisconnected();
+        TCPClientBase::onDisconnected();
         std::cout << "Disconnected from chat server." << std::endl;
     }
 
     void onConnectionError(const std::error_code& ec) override {
-        ClientBase::onConnectionError(ec);
+        TCPClientBase::onConnectionError(ec);
         std::cout << "Failed to connect to chat server: " << ec.message() << std::endl;
     }
 
