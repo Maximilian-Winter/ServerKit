@@ -35,7 +35,7 @@ namespace NetworkMessages
     protected:
         // Serialization helpers
         template<typename T>
-        void append_bytes(std::vector<byte> &vec, const T &data)
+        static void append_bytes(std::vector<byte> &vec, const T &data)
         {
             if constexpr (std::is_same_v<T, std::vector<byte>>) {
                 append_byte_vector(vec, data);
@@ -325,6 +325,7 @@ namespace NetworkMessages
         }
 
     };
+
     class MessageTypeData : BinaryData
     {
     public:
@@ -383,7 +384,7 @@ namespace NetworkMessages
         [[nodiscard]] short getMessageType() const
         { return messageType; }
 
-        const T &getPayload() const
+         T &getPayload()
         { return messagePayload; }
 
     private:

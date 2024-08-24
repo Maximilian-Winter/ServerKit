@@ -1,0 +1,9 @@
+{
+  "ChatMessage": {
+    "type": 0,
+    "fields": {
+      "username": "string",
+      "message": "string"
+    }
+  }
+}
