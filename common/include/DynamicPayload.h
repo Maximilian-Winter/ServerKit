@@ -20,15 +20,9 @@ public:
     DynamicPayload() = default;
     explicit DynamicPayload(json definition) : definition(std::move(definition)) {}
 
-    [[nodiscard]] std::vector<byte> serialize() override {
+    [[nodiscard]] std::vector<byte> serialize() const override {
         std::vector<byte> data;
-        for (const auto& [key, type] : definition["fields"].items()) {
-            if (fields.find(key) != fields.end()) {
-                std::visit([&](auto&& arg) {
-                    this->append_bytes(data, arg);
-                }, fields[key]);
-            }
-        }
+
         return data;
     }
 

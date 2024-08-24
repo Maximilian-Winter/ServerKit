@@ -18,26 +18,29 @@
 
 namespace NetworkMessages
 {
+
+
     class BinaryData
     {
     public:
         using byte = std::uint8_t;
+        using ByteVector = std::vector<byte>;
 
         virtual ~BinaryData() = default;
 
         // Serialize the message to a byte vector
-        [[nodiscard]] virtual std::vector<byte> serialize() = 0;
+        [[nodiscard]] virtual ByteVector serialize() const = 0;
 
         // Deserialize from a byte vector
-        virtual void deserialize(const std::vector<byte> &data) = 0;
+        virtual void deserialize(const ByteVector &data) = 0;
 
 
     protected:
         // Serialization helpers
         template<typename T>
-        static void append_bytes(std::vector<byte> &vec, const T &data)
+        static void append_bytes(ByteVector &vec, const T &data)
         {
-            if constexpr (std::is_same_v<T, std::vector<byte>>) {
+            if constexpr (std::is_same_v<T, ByteVector>) {
                 append_byte_vector(vec, data);
             } else
             {
@@ -48,7 +51,7 @@ namespace NetworkMessages
         }
 
         template<typename T>
-        static T read_bytes(const std::vector<byte>& data, size_t& offset)
+        static T read_bytes(const ByteVector& data, size_t& offset)
         {
             if constexpr (std::is_same_v<T, std::string>) {
                 return read_string_from_bytes(data, offset);
@@ -68,7 +71,7 @@ namespace NetworkMessages
             auto start = data.begin() + static_cast<std::ptrdiff_t>(offset);
             auto end = start + static_cast<std::ptrdiff_t>(sizeof(T));
 
-            T value = from_bytes<T>(std::vector<byte>(start, end));
+            T value = from_bytes<T>(ByteVector(start, end));
             from_network_order(value);  // Convert from network byte order to host byte order
             offset += sizeof(T);
             return value;
@@ -98,12 +101,12 @@ namespace NetworkMessages
         }
 
         template<typename T>
-        static std::vector<byte> to_bytes(const T& object) {
+        static ByteVector to_bytes(const T& object) {
             if constexpr (std::is_same_v<T, std::string>) {
                 return string_to_bytes(object);
             } else {
                 static_assert(std::is_trivially_copyable<T>::value, "not a TriviallyCopyable type");
-                std::vector<byte> bytes(sizeof(T));
+                ByteVector bytes(sizeof(T));
                 T network_object = object;
                 to_network_order(network_object);
                 const byte* begin = reinterpret_cast<const byte*>(std::addressof(network_object));
@@ -114,7 +117,7 @@ namespace NetworkMessages
         }
 
         template<typename T>
-        static T from_bytes(const std::vector<byte>& bytes) {
+        static T from_bytes(const ByteVector& bytes) {
             if constexpr (std::is_same_v<T, std::string>) {
                 return string_from_bytes(bytes);
             } else {
@@ -126,44 +129,31 @@ namespace NetworkMessages
             }
         }
 
-        static void append_byte_vector(std::vector<byte> &vec, const std::vector<byte> &data)
+        static void append_byte_vector(ByteVector &vec, const ByteVector &data)
         {
             vec.insert(vec.end(), data.begin(), data.end());
         }
 
-        static std::vector<byte> string_to_bytes(const std::string& str) {
-            std::vector<byte> bytes;
-            size_t utf8_length = 0;
+        static ByteVector string_to_bytes(const std::string& str) {
+            ByteVector bytes;
+            bytes.reserve(sizeof(uint32_t) + str.size() * 4);  // Worst case: all 4-byte UTF-8
 
-            // First pass: calculate UTF-8 length
-            for (char32_t c : str) {
-                if (c <= 0x7F) utf8_length += 1;
-                else if (c <= 0x7FF) utf8_length += 2;
-                else if (c <= 0xFFFF) utf8_length += 3;
-                else utf8_length += 4;
-            }
-
-            // Reserve space for length and UTF-8 data
-            bytes.reserve(sizeof(uint32_t) + utf8_length);
-
-            // Store the length of the UTF-8 string
-            auto network_length = static_cast<uint32_t>(utf8_length);
-            to_network_order(network_length);
-            const byte* length_bytes = reinterpret_cast<const byte*>(&network_length);
-            bytes.insert(bytes.end(), length_bytes, length_bytes + sizeof(uint32_t));
-
-            // Second pass: encode to UTF-8
+            uint32_t utf8_length = 0;
             for (char32_t c : str) {
                 if (c <= 0x7F) {
+                    utf8_length += 1;
                     bytes.push_back(static_cast<byte>(c));
                 } else if (c <= 0x7FF) {
+                    utf8_length += 2;
                     bytes.push_back(static_cast<byte>(0xC0 | (c >> 6)));
                     bytes.push_back(static_cast<byte>(0x80 | (c & 0x3F)));
                 } else if (c <= 0xFFFF) {
+                    utf8_length += 3;
                     bytes.push_back(static_cast<byte>(0xE0 | (c >> 12)));
                     bytes.push_back(static_cast<byte>(0x80 | ((c >> 6) & 0x3F)));
                     bytes.push_back(static_cast<byte>(0x80 | (c & 0x3F)));
                 } else {
+                    utf8_length += 4;
                     bytes.push_back(static_cast<byte>(0xF0 | (c >> 18)));
                     bytes.push_back(static_cast<byte>(0x80 | ((c >> 12) & 0x3F)));
                     bytes.push_back(static_cast<byte>(0x80 | ((c >> 6) & 0x3F)));
@@ -171,56 +161,58 @@ namespace NetworkMessages
                 }
             }
 
-            return bytes;
+            ByteVector result;
+            result.reserve(sizeof(uint32_t) + utf8_length);
+            append_bytes(result, utf8_length);
+            result.insert(result.end(), bytes.begin(), bytes.end());
+            return result;
         }
 
-        static std::string read_string_from_bytes(const std::vector<byte>& data, size_t& offset) {
+        static std::string read_string_from_bytes(const ByteVector& data, size_t& offset) {
             if (offset + sizeof(uint32_t) > data.size()) {
                 throw std::runtime_error("Not enough data to read string length");
             }
 
-            uint32_t network_length;
-            std::memcpy(&network_length, &data[offset], sizeof(uint32_t));
-            from_network_order(network_length);
-            offset += sizeof(uint32_t);
+            auto utf8_length = read_bytes<uint32_t>(data, offset);
 
-            if (offset + network_length > data.size()) {
+            if (offset + utf8_length > data.size()) {
                 throw std::runtime_error("Not enough data to read string content");
             }
 
             std::string result;
-            size_t end = offset + network_length;
-            while (offset < end) {
-                char32_t codepoint = 0;
-                byte first_byte = data[offset++];
+            result.reserve(utf8_length);  // Pre-allocate for efficiency
+            const byte* cur = data.data() + offset;
+            const byte* end = cur + utf8_length;
 
-                if ((first_byte & 0x80) == 0) {
-                    codepoint = first_byte;
-                } else if ((first_byte & 0xE0) == 0xC0) {
-                    if (offset >= end) throw std::runtime_error("Invalid UTF-8 sequence");
-                    codepoint = ((first_byte & 0x1F) << 6) | (data[offset++] & 0x3F);
-                } else if ((first_byte & 0xF0) == 0xE0) {
-                    if (offset + 1 >= end) throw std::runtime_error("Invalid UTF-8 sequence");
-                    codepoint = ((first_byte & 0x0F) << 12) |
-                                ((data[offset++] & 0x3F) << 6) |
-                                (data[offset++] & 0x3F);
-                } else if ((first_byte & 0xF8) == 0xF0) {
-                    if (offset + 2 >= end) throw std::runtime_error("Invalid UTF-8 sequence");
-                    codepoint = ((first_byte & 0x07) << 18) |
-                                ((data[offset++] & 0x3F) << 12) |
-                                ((data[offset++] & 0x3F) << 6) |
-                                (data[offset++] & 0x3F);
+            while (cur < end) {
+                if ((*cur & 0x80) == 0) {
+                    result.push_back(static_cast<char>(*cur++));
+                } else if ((*cur & 0xE0) == 0xC0) {
+                    if (end - cur < 2) throw std::runtime_error("Invalid UTF-8 sequence");
+                    char32_t codepoint = ((cur[0] & 0x1F) << 6) | (cur[1] & 0x3F);
+                    result.push_back(static_cast<char>(codepoint));
+                    cur += 2;
+                } else if ((*cur & 0xF0) == 0xE0) {
+                    if (end - cur < 3) throw std::runtime_error("Invalid UTF-8 sequence");
+                    char32_t codepoint = ((cur[0] & 0x0F) << 12) | ((cur[1] & 0x3F) << 6) | (cur[2] & 0x3F);
+                    result.push_back(static_cast<char>(codepoint));
+                    cur += 3;
+                } else if ((*cur & 0xF8) == 0xF0) {
+                    if (end - cur < 4) throw std::runtime_error("Invalid UTF-8 sequence");
+                    char32_t codepoint = ((cur[0] & 0x07) << 18) | ((cur[1] & 0x3F) << 12) |
+                                         ((cur[2] & 0x3F) << 6) | (cur[3] & 0x3F);
+                    result.push_back(static_cast<char>(codepoint));
+                    cur += 4;
                 } else {
                     throw std::runtime_error("Invalid UTF-8 sequence");
                 }
-
-                result += static_cast<char>(codepoint);
             }
 
+            offset += utf8_length;
             return result;
         }
 
-        static std::string string_from_bytes(const std::vector<byte>& bytes) {
+        static std::string string_from_bytes(const ByteVector& bytes) {
             if (bytes.size() < sizeof(uint32_t)) {
                 throw std::runtime_error("Invalid byte array for string deserialization");
             }
@@ -244,14 +236,14 @@ namespace NetworkMessages
     public:
         short Type{};
 
-        [[nodiscard]] std::vector<byte> serialize() override
+        [[nodiscard]] ByteVector serialize() const override
         {
-            std::vector<byte> data;
+            ByteVector data;
             append_bytes(data, Type);
             return data;
         }
 
-        void deserialize(const std::vector<byte> &data) override
+        void deserialize(const ByteVector &data) override
         {
             size_t offset = 0;
             Type = read_bytes<short>(data, offset);
@@ -269,9 +261,9 @@ namespace NetworkMessages
             static_assert(std::is_base_of_v<BinaryData, T>, "T must inherit from BinaryData");
         }
 
-        [[nodiscard]] std::vector<byte> serialize() override
+        [[nodiscard]] ByteVector serialize() const override
         {
-            std::vector<byte> data;
+            ByteVector data;
             MessageTypeData typeData;
             typeData.Type = messageType;
             auto messageTypeData = typeData.serialize();
@@ -281,7 +273,7 @@ namespace NetworkMessages
             return data;
         }
 
-        void deserialize(const std::vector<byte> &data) override
+        void deserialize(const ByteVector &data) override
         {
             if (data.size() < sizeof(short))
             {
@@ -290,7 +282,7 @@ namespace NetworkMessages
             MessageTypeData typeData;
             typeData.deserialize(data);
             messageType = typeData.Type;
-            std::vector<byte> payloadData(data.begin() + sizeof(short), data.end());
+            ByteVector payloadData(data.begin() + sizeof(short), data.end());
             messagePayload.deserialize(payloadData);
         }
 
@@ -310,14 +302,14 @@ namespace NetworkMessages
     public:
         std::string ErrorMessage;
 
-        [[nodiscard]] std::vector<byte> serialize() override
+        [[nodiscard]] ByteVector serialize() const override
         {
-            std::vector<byte> data;
+            ByteVector data;
             append_bytes(data, ErrorMessage);
             return data;
         }
 
-        void deserialize(const std::vector<byte> &data) override
+        void deserialize(const ByteVector &data) override
         {
             size_t offset = 0;
             ErrorMessage = read_bytes<std::string>(data, offset);
