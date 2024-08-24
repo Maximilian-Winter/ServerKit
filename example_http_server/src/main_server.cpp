@@ -4,7 +4,7 @@
 int main() {
     HTTPServer server("chat_server_config.json");
 
-    server.setRequestHandler(HTTPHeader::Method::GET_METHOD, "/", [](const HTTPMessage& request) {
+    server.setRequestHandler(HTTPHeader::Method::GET_METHOD, "/chat", [](const HTTPMessage& request) {
         HTTPMessage response;
         response.setVersion("HTTP/1.1");
         response.setStatusCode(200);
