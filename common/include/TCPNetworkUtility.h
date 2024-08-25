@@ -23,11 +23,11 @@ public:
 
         asio::ip::tcp::socket& socket() { return socket_; }
 
-        void write(const std::vector<uint8_t>& message) {
+        void write(const FastVector::ByteVector& message) {
             LOG_DEBUG("Connection::write called. Message size: %zu", message.size());
 
             // Prepare the packet: 4-byte header (payload size) + payload
-            std::vector<uint8_t> packet;
+            FastVector::ByteVector packet;
             auto size = static_cast<uint32_t>(message.size());
             packet.resize(4 + size);
             packet[0] = size & 0xFF;
@@ -45,7 +45,7 @@ public:
             });
         }
 
-        void read(const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void read(const std::function<void(const FastVector::ByteVector&)>& callback) {
             LOG_DEBUG("Connection::read called");
             asio::post(strand_, [this, callback]() mutable {
                 do_read_header(callback);
@@ -102,7 +102,7 @@ public:
                               }));
         }
 
-        void do_read_header(const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void do_read_header(const std::function<void(const FastVector::ByteVector&)>& callback) {
             asio::async_read(socket_, asio::buffer(header_buffer_, 4),
                              asio::bind_executor(strand_, [this, self = shared_from_this(), callback]
                                      (std::error_code ec, std::size_t /*length*/) {
@@ -121,7 +121,7 @@ public:
                              }));
         }
 
-        void do_read_body(uint32_t payload_size, const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void do_read_body(uint32_t payload_size, const std::function<void(const FastVector::ByteVector&)>& callback) {
             LOG_DEBUG("Connection::do_read_body called. Payload size: %u", payload_size);
             read_buffer_.resize(payload_size);
             asio::async_read(socket_, asio::buffer(read_buffer_),
@@ -151,9 +151,9 @@ public:
 
         asio::ip::tcp::socket socket_;
         asio::strand<asio::io_context::executor_type> strand_;
-        std::vector<uint8_t> read_buffer_;
+        FastVector::ByteVector read_buffer_;
         uint8_t header_buffer_[4]{};
-        std::deque<std::vector<uint8_t>> write_queue_;
+        std::deque<FastVector::ByteVector> write_queue_;
     };
 
     class Session : public std::enable_shared_from_this<Session> {
@@ -161,7 +161,7 @@ public:
         explicit Session(std::shared_ptr<Connection> connection)
                 : connection_(std::move(connection)), connection_uuid(Utilities::generateUuid()) {}
 
-        void start(const std::function<void(const std::vector<uint8_t>&)>& messageHandler) {
+        void start(const std::function<void(const FastVector::ByteVector&)>& messageHandler) {
             if (!connection_) {
                 LOG_ERROR("Attempting to start session with null connection");
                 return;
@@ -169,7 +169,7 @@ public:
             connection_->read(messageHandler);
         }
 
-        void write(const std::vector<uint8_t>& message) {
+        void write(const FastVector::ByteVector& message) {
             if (connection_) {
                 connection_->write(message);
             } else {

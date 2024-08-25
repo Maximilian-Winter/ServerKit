@@ -8,18 +8,18 @@
 class ChatServer : public TCPServerBase {
 public:
     explicit ChatServer(const std::string& config_file) : TCPServerBase(config_file) {
-        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) {
+        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) {
             handleChatMessage(session, data);
         });
     }
 
 protected:
-    void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) override {
+    void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) override {
         m_messageHandler.handleMessage(session, data);
     }
 
 private:
-    void handleChatMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) {
+    void handleChatMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) {
         try {
             auto message = NetworkMessages::BinaryMessage<NetworkMessages::ChatMessage>(0, NetworkMessages::ChatMessage());
             message.deserialize(data);

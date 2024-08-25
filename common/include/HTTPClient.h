@@ -101,7 +101,7 @@ private:
             HTTPBody httpBody;
             httpBody.setContent(body);
             request.setBody(httpBody);
-            std::vector<uint8_t> serializedBody = httpBody.serialize();
+            FastVector::ByteVector serializedBody = httpBody.serialize();
             request.addHeader("Content-Length", std::to_string(serializedBody.size()));
             request.addHeader("Content-Type", "text/plain");
         }

@@ -63,8 +63,8 @@ public:
         return m_headers;
     }
 
-    [[nodiscard]] std::vector<uint8_t> serialize() override {
-        std::vector<uint8_t> data;
+    [[nodiscard]] FastVector::ByteVector serialize() override {
+        FastVector::ByteVector data;
         std::string startLine;
 
         if (isHttpMethod(methodToString(m_method))) {
@@ -84,7 +84,7 @@ public:
         return data;
     }
 
-    void deserialize(const std::vector<uint8_t>& data) override {
+    void deserialize(const FastVector::ByteVector& data) override {
         int offset = 0;
         std::string line;
         line = read_bytes(data, offset);

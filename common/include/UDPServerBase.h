@@ -54,9 +54,9 @@ public:
     }
 
 protected:
-    virtual void handleMessage(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& sender_endpoint) = 0;
+    virtual void handleMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) = 0;
 
-    void sendMessage(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& recipient_endpoint) {
+    void sendMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& recipient_endpoint) {
         if (m_session) {
             m_session->send_to(message, recipient_endpoint);
         } else {
@@ -91,7 +91,7 @@ private:
 
     void startReceive() {
         if (m_session) {
-            m_session->start([this](const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& sender_endpoint) {
+            m_session->start([this](const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) {
                 handleMessage(message, sender_endpoint);
             });
         }

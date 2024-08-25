@@ -61,7 +61,7 @@ public:
         }
     }
 
-    void sendMessage(const std::vector<uint8_t>& message) {
+    void sendMessage(const FastVector::ByteVector& message) {
         if (m_connected && m_session) {
             asio::ip::udp::endpoint server_endpoint(asio::ip::make_address(m_host), m_port);
             m_session->send_to(message, server_endpoint);
@@ -71,7 +71,7 @@ public:
     }
 
 protected:
-    virtual void handleMessage(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& sender_endpoint) = 0;
+    virtual void handleMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) = 0;
 
     virtual void onConnected() {
         LOG_INFO("UDP session set up successfully");
@@ -103,7 +103,7 @@ protected:
 
     void startReceive() {
         if (m_connected && m_session) {
-            m_session->start([this](const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& sender_endpoint) {
+            m_session->start([this](const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) {
                 handleMessage(message, sender_endpoint);
             });
         }

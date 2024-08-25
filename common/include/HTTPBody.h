@@ -14,13 +14,13 @@ public:
         return m_content;
     }
 
-    [[nodiscard]] std::vector<uint8_t> serialize() override {
-        std::vector<uint8_t> data;
+    [[nodiscard]] FastVector::ByteVector serialize() override {
+        FastVector::ByteVector data;
         append_bytes(data, m_content);
         return data;
     }
 
-    void deserialize(const std::vector<uint8_t>& data) override {
+    void deserialize(const FastVector::ByteVector& data) override {
         int offset = 0;
         while (offset < data.size())
         {

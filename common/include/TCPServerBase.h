@@ -52,7 +52,7 @@ public:
     }
 
 protected:
-    virtual void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& message) = 0;
+    virtual void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& message) = 0;
 
     virtual void onClientConnected(const std::shared_ptr<TCPNetworkUtility::Session>& session) {
         LOG_INFO("New client connected: %s", session->connection()->remoteEndpoint().address().to_string().c_str());
@@ -62,7 +62,7 @@ protected:
         LOG_INFO("Client disconnected: %s", session->connection()->remoteEndpoint().address().to_string().c_str());
     }
 
-    void broadcastMessage(const std::vector<uint8_t>& message) {
+    void broadcastMessage(const FastVector::ByteVector& message) {
         for (const auto& pair : m_sessions) {
             pair.second->write(message);
         }
@@ -104,7 +104,7 @@ private:
 
                         onClientConnected(session);
 
-                        session->start([this, session](const std::vector<uint8_t>& message) {
+                        session->start([this, session](const FastVector::ByteVector& message) {
                             handleMessage(session, message);
                         });
                     } else {

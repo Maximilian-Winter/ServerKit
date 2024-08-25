@@ -7,7 +7,7 @@
     }
   },
   "TestMessage": {
-    "type": 0,
+    "type": 1,
     "fields": {
       "test_string": "string",
       "test_float": "float",

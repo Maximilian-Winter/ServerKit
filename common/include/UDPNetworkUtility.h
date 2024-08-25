@@ -27,7 +27,7 @@ public:
 
         asio::ip::udp::socket& socket() { return socket_; }
 
-        void send_to(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& endpoint) {
+        void send_to(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& endpoint) {
             LOG_DEBUG("Connection::send_to called. Message size: %zu", message.size());
 
             asio::post(strand_, [this, message, endpoint]() {
@@ -39,7 +39,7 @@ public:
             });
         }
 
-        void receive(const std::function<void(const std::vector<uint8_t>&, const asio::ip::udp::endpoint&)>& callback) {
+        void receive(const std::function<void(const FastVector::ByteVector&, const asio::ip::udp::endpoint&)>& callback) {
             LOG_DEBUG("Connection::receive called");
             asio::post(strand_, [this, callback]() mutable {
                 do_receive(callback);
@@ -91,7 +91,7 @@ public:
                                   }));
         }
 
-        void do_receive(const std::function<void(const std::vector<uint8_t>&, const asio::ip::udp::endpoint&)>& callback) {
+        void do_receive(const std::function<void(const FastVector::ByteVector&, const asio::ip::udp::endpoint&)>& callback) {
             socket_.async_receive_from(asio::buffer(read_buffer_), sender_endpoint_,
                                        asio::bind_executor(strand_, [this, self = shared_from_this(), callback]
                                                (std::error_code ec, std::size_t length) {
@@ -99,7 +99,7 @@ public:
                                                LOG_DEBUG("UDP Read message size: %zu", length);
 
                                                // Execute callback outside of strand to prevent potential deadlocks
-                                               asio::post([callback, message = std::vector<uint8_t>(read_buffer_.begin(), read_buffer_.begin() + length), sender_endpoint = sender_endpoint_]() {
+                                               asio::post([callback, message = FastVector::ByteVector(read_buffer_.begin(), read_buffer_.begin() + length), sender_endpoint = sender_endpoint_]() {
                                                    LOG_DEBUG("Executing UDP read callback");
                                                    try {
                                                        callback(message, sender_endpoint);
@@ -118,9 +118,9 @@ public:
 
         asio::ip::udp::socket socket_;
         asio::strand<asio::io_context::executor_type> strand_;
-        std::vector<uint8_t> read_buffer_;
+        FastVector::ByteVector read_buffer_;
         asio::ip::udp::endpoint sender_endpoint_;
-        std::deque<std::pair<std::vector<uint8_t>, asio::ip::udp::endpoint>> write_queue_;
+        std::deque<std::pair<FastVector::ByteVector, asio::ip::udp::endpoint>> write_queue_;
     };
 
     class Session : public std::enable_shared_from_this<Session> {
@@ -128,7 +128,7 @@ public:
         explicit Session(std::shared_ptr<Connection> connection)
                 : connection_(std::move(connection)), connection_uuid(Utilities::generateUuid()) {}
 
-        void start(const std::function<void(const std::vector<uint8_t>&, const asio::ip::udp::endpoint&)>& messageHandler) {
+        void start(const std::function<void(const FastVector::ByteVector&, const asio::ip::udp::endpoint&)>& messageHandler) {
             if (!connection_) {
                 LOG_ERROR("Attempting to start UDP session with null connection");
                 return;
@@ -136,7 +136,7 @@ public:
             connection_->receive(messageHandler);
         }
 
-        void send_to(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& endpoint) {
+        void send_to(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& endpoint) {
             if (connection_) {
                 connection_->send_to(message, endpoint);
             } else {

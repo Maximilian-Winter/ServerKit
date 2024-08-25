@@ -31,7 +31,7 @@ public:
         asio::ip::tcp::socket& socket() { return socket_; }
 
         void write(HTTPMessage& message) {
-            std::vector<uint8_t> messageData = message.serialize();
+            FastVector::ByteVector messageData = message.serialize();
             LOG_DEBUG("Connection::write called. Message size: %zu", messageData.size());
 
             asio::post(strand_, [this, messageData = messageData]() mutable {
@@ -139,7 +139,7 @@ public:
             bool close_connection = should_close_connection(header_string);
 
             if (is_chunked) {
-                do_read_chunked([this, callback](const std::vector<uint8_t>& body) {
+                do_read_chunked([this, callback](const FastVector::ByteVector& body) {
                     HTTPHeader httpHeader;
                     httpHeader.deserialize(headers_);
                     HTTPBody httpBody;
@@ -151,7 +151,7 @@ public:
                     callback(httpMessage);
                 });
             } else if (content_length > 0) {
-                do_read_body(content_length, [this, callback](const std::vector<uint8_t>& body) {
+                do_read_body(content_length, [this, callback](const FastVector::ByteVector& body) {
                     HTTPHeader httpHeader;
                     httpHeader.deserialize(headers_);
                     HTTPBody httpBody;
@@ -163,7 +163,7 @@ public:
                     callback(httpMessage);
                 });
             } else if (close_connection) {
-                do_read_until_close([this, callback](const std::vector<uint8_t>& body) {
+                do_read_until_close([this, callback](const FastVector::ByteVector& body) {
                     HTTPHeader httpHeader;
                     httpHeader.deserialize(headers_);
                     HTTPBody httpBody;
@@ -187,10 +187,10 @@ public:
             }
         }
 
-        void do_read_body(size_t content_length, const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void do_read_body(size_t content_length, const std::function<void(const FastVector::ByteVector&)>& callback) {
             if (read_buffer_.size() >= content_length) {
                 // We already have enough data
-                std::vector<uint8_t> body(read_buffer_.begin(), read_buffer_.begin() + content_length);
+                FastVector::ByteVector body(read_buffer_.begin(), read_buffer_.begin() + content_length);
                 read_buffer_.erase(read_buffer_.begin(), read_buffer_.begin() + content_length);
                 callback(body);
             } else {
@@ -199,7 +199,7 @@ public:
                                  asio::bind_executor(strand_, [this, self = shared_from_this(), content_length, callback]
                                          (std::error_code ec, std::size_t /*length*/) {
                                      if (!ec) {
-                                         std::vector<uint8_t> body(read_buffer_.begin(), read_buffer_.begin() + content_length);
+                                         FastVector::ByteVector body(read_buffer_.begin(), read_buffer_.begin() + content_length);
                                          read_buffer_.erase(read_buffer_.begin(), read_buffer_.begin() + content_length);
                                          callback(body);
                                      } else {
@@ -210,12 +210,12 @@ public:
             }
         }
 
-        void do_read_chunked(const std::function<void(const std::vector<uint8_t>&)>& callback) {
-            std::vector<uint8_t> full_body;
+        void do_read_chunked(const std::function<void(const FastVector::ByteVector&)>& callback) {
+            FastVector::ByteVector full_body;
             read_next_chunk(full_body, callback);
         }
 
-        void read_next_chunk(std::vector<uint8_t>& full_body, const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void read_next_chunk(FastVector::ByteVector& full_body, const std::function<void(const FastVector::ByteVector&)>& callback) {
             asio::async_read_until(socket_, asio::dynamic_buffer(read_buffer_), "\r\n",
                                    asio::bind_executor(strand_, [this, self = shared_from_this(), &full_body, callback]
                                            (std::error_code ec, std::size_t length) {
@@ -263,7 +263,7 @@ public:
                                    }));
         }
 
-        void do_read_until_close(const std::function<void(const std::vector<uint8_t>&)>& callback) {
+        void do_read_until_close(const std::function<void(const FastVector::ByteVector&)>& callback) {
             asio::async_read(socket_, asio::dynamic_buffer(read_buffer_),
                              asio::transfer_at_least(1),
                              asio::bind_executor(strand_, [this, self = shared_from_this(), callback]
@@ -271,7 +271,7 @@ public:
                                  if (!ec) {
                                      do_read_until_close(callback);
                                  } else if (ec == asio::error::eof) {
-                                     std::vector<uint8_t> body(read_buffer_.begin(), read_buffer_.end());
+                                     FastVector::ByteVector body(read_buffer_.begin(), read_buffer_.end());
                                      callback(body);
                                  } else {
                                      LOG_ERROR("Error in read_until_close: %s", ec.message().c_str());
@@ -316,8 +316,8 @@ public:
         asio::ip::tcp::socket socket_;
         asio::strand<asio::io_context::executor_type> strand_;
         std::string read_buffer_;
-        std::deque<std::vector<uint8_t>> write_queue_;
-        std::vector<uint8_t> headers_;
+        std::deque<FastVector::ByteVector> write_queue_;
+        FastVector::ByteVector headers_;
     };
 
     static std::shared_ptr<Connection> connect(asio::io_context& io_context,

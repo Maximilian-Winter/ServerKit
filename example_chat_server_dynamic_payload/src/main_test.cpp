@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "OptimizedDynamicPayload.h"
+#include "DynamicPayload.h"
 
 class ChatMessage : public NetworkMessages::BinaryData {
 public:
@@ -17,20 +18,22 @@ public:
     ChatMessage(std::string username, std::string message)
             : username(std::move(username)), message(std::move(message)) {}
 
-    [[nodiscard]] std::vector<byte> serialize() const override {
-        std::vector<byte> data;
+    [[nodiscard]] ByteVector serialize() const override {
+        ByteVector data;
         append_bytes(data, username);
         append_bytes(data, message);
         return data;
     }
 
-    void deserialize(const std::vector<byte>& data) override {
+    void deserialize(const ByteVector& data) override {
         size_t offset = 0;
         username = read_bytes<std::string>(data, offset);
         message = read_bytes<std::string>(data, offset);
     }
 
 };
+
+
 
 // Function to generate a random string
 std::string generate_random_string(int length) {
@@ -57,13 +60,13 @@ double measure_time(Func&& func) {
 double test_normal_payload(int num_messages) {
     double serialize_time = 0.0;
     double deserialize_time = 0.0;
-    std::vector<std::vector<uint8_t>> serialized_messages;
-
+    std::vector<NetworkMessages::BinaryData::ByteVector> serialized_messages;
+    serialized_messages.reserve(num_messages);
     for (int i = 0; i < num_messages; ++i) {
         NetworkMessages::BinaryMessage<ChatMessage> message(0, ChatMessage());
         auto& payload = message.getPayload();
         std::string username = generate_random_string(10);
-        std::string random_message = generate_random_string(50);
+        std::string random_message = "Hello World!";
         payload.username = username;
         payload.message = random_message;
 
@@ -76,6 +79,8 @@ double test_normal_payload(int num_messages) {
         NetworkMessages::BinaryMessage<ChatMessage> message(0, ChatMessage());
         deserialize_time += measure_time([&]() {
             message.deserialize(serialized);
+
+            std::cout<< message.getPayload().message << std::endl;
         });
     }
 
@@ -91,15 +96,10 @@ double test_normal_payload(int num_messages) {
 double test_optimized_dynamic_payload(int num_messages) {
     double serialize_time = 0.0;
     double deserialize_time = 0.0;
-    std::vector<std::vector<uint8_t>> serialized_messages;
+    std::vector<NetworkMessages::BinaryData::ByteVector> serialized_messages;
 
     for (int i = 0; i < num_messages; ++i) {
-        auto message = Optimized::MessageFactory::createMessage("ChatMessage");
-        auto& payload = message->getPayload();
-        std::string username = generate_random_string(10);
-        std::string random_message = generate_random_string(50);
-        payload.set("username", username);
-        payload.set("message", random_message);
+
 
         serialize_time += measure_time([&]() {
             serialized_messages.push_back(message->serialize());
@@ -107,7 +107,7 @@ double test_optimized_dynamic_payload(int num_messages) {
     }
 
     for (const auto& serialized : serialized_messages) {
-        auto message = Optimized::MessageFactory::createMessage("ChatMessage");
+        auto message = MessageFactory::createMessage("ChatMessage");
         deserialize_time += measure_time([&]() {
             message->deserialize(serialized);
         });
@@ -122,17 +122,23 @@ double test_optimized_dynamic_payload(int num_messages) {
 }
 
 int main() {
+    MessageFactory::loadDefinitions("chat_messages.json");
 
-    Optimized::MessageFactory::loadDefinitions("chat_messages.json");
+    auto message = MessageFactory::createMessage("ChatMessage");
+    auto& payload = message->getPayload();
+    std::string username = "MadWizard";
+    std::string chat_message = "Hello World!";
+    payload.set("username", username);
+    payload.set("message", chat_message);
 
-    const int num_messages = 500000;  // Number of messages per test
-    const int num_runs = 10;  // Number of times to run each test
+    message->serialize();
+    const int num_messages = 1000;  // Number of messages per test
+    const int num_runs = 100;  // Number of times to run each test
 
     std::cout << "Testing with " << num_messages << " messages, " << num_runs << " runs each\n\n";
 
     // Warm-up run (not timed)
     test_normal_payload(1000);
-    //test_dynamic_payload(1000);
     test_optimized_dynamic_payload(1000);
 
     std::vector<double> normal_times, optimized_times;
@@ -141,7 +147,6 @@ int main() {
         std::cout << "Run " << (i + 1) << ":\n";
 
         normal_times.push_back(test_normal_payload(num_messages));
-        //dynamic_times.push_back(test_dynamic_payload(num_messages));
         optimized_times.push_back(test_optimized_dynamic_payload(num_messages));
 
         std::cout << "\n";
@@ -168,7 +173,6 @@ int main() {
     //std::cout << "DynamicPayload: " << (dynamic_payload_avg / chat_message_avg * 100) << "%\n";
     std::cout << "OptimizedDynamicPayload: " << (optimized_dynamic_payload_avg / chat_message_avg * 100) << "%\n";
 
-    std::cout << "\nRelative to DynamicPayload:\n";
     //std::cout << "OptimizedDynamicPayload: " << (optimized_dynamic_payload_avg / dynamic_payload_avg * 100) << "%\n";
     return 0;
 }
