@@ -31,7 +31,7 @@ public:
     }
 
 protected:
-    void handleMessage(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& sender_endpoint) override {
+    void handleMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) override {
         if (m_pipe && m_running) {
             fwrite(message.data(), 1, message.size(), m_pipe);
             fflush(m_pipe);

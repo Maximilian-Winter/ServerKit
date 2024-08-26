@@ -8,27 +8,27 @@
 class ChatServer : public TCPServerBase {
 public:
     explicit ChatServer(const std::string& config_file) : TCPServerBase(config_file) {
-        MessageFactory::loadDefinitions("chat_messages.json");
-        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) {
+        JSONPayload::MessageFactory::loadDefinitions("chat_messages.json");
+        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) {
             handleChatMessage(session, data);
         });
     }
 
 protected:
-    void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) override {
+    void handleMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) override {
         m_messageHandler.handleMessage(session, data);
     }
 
 private:
-    void handleChatMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) {
+    void handleChatMessage(const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) {
         try {
-            auto message = MessageFactory::createMessage("ChatMessage");
+            auto message = JSONPayload::MessageFactory::createMessage("ChatMessage");
             message->deserialize(data);
 
             const auto& payload = message->getPayload();
             LOG_INFO("Received message from %s (Session UUID: %s): %s",
                      payload.get<std::string>("username").c_str(),
-                     session->getConnectionUuid().c_str(),
+                     session->getConnectionId().c_str(),
                      payload.get<std::string>("message").c_str());
 
             // Broadcast the message to all clients

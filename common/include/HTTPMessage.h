@@ -33,8 +33,8 @@ public:
     [[nodiscard]] const HTTPHeader& getHeader() const { return m_headers; }
     [[nodiscard]] const HTTPBody& getBody() const { return m_body; }
 
-    [[nodiscard]] std::vector<uint8_t> serialize()  {
-        std::vector<uint8_t> data;
+    [[nodiscard]] FastVector::ByteVector serialize()  {
+        FastVector::ByteVector data;
 
         // Serialize headers
         auto headerData = m_headers.serialize();

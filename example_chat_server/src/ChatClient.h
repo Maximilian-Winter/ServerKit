@@ -12,7 +12,7 @@ public:
             : TCPClientBase(config_file), m_username()
     {
         m_username = m_config.get<std::string>("user_name", "Unknown");
-        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) {
+        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) {
             handleChatMessage(data);
         });
     }
@@ -35,7 +35,7 @@ public:
     }
 
 protected:
-    void handleMessage(const std::vector<uint8_t>& data) override {
+    void handleMessage(const FastVector::ByteVector& data) override {
         m_messageHandler.handleMessage(m_session, data);
     }
 
@@ -56,13 +56,15 @@ protected:
     }
 
 private:
-    void handleChatMessage(const std::vector<uint8_t>& data) {
+    void handleChatMessage(const FastVector::ByteVector& data) {
+        LOG_DEBUG("handleMessage called. Data size: %zu", data.size());
         try {
             auto message = NetworkMessages::BinaryMessage<NetworkMessages::ChatMessage>(0, NetworkMessages::ChatMessage());
             message.deserialize(data);
 
             const auto& chatMessage = message.getPayload();
             std::cout << chatMessage.username << ": " << chatMessage.message << std::endl;
+            LOG_DEBUG("Message processed: %s: %s", chatMessage.username.c_str(), chatMessage.message.c_str());
         } catch (const std::exception& e) {
             LOG_ERROR("Error handling chat message: %s", e.what());
         }

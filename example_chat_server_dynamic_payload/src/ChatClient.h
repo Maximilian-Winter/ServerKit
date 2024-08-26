@@ -13,7 +13,7 @@ public:
     {
         m_username = m_config.get<std::string>("user_name", "Unknown");
         MessageFactory::loadDefinitions("chat_messages.json");
-        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const std::vector<uint8_t>& data) {
+        m_messageHandler.registerHandler(0, [this](const std::shared_ptr<TCPNetworkUtility::Session>& session, const FastVector::ByteVector& data) {
             handleChatMessage(data);
         });
     }
@@ -36,7 +36,7 @@ public:
     }
 
 protected:
-    void handleMessage(const std::vector<uint8_t>& data) override {
+    void handleMessage(const FastVector::ByteVector& data) override {
         m_messageHandler.handleMessage(m_session, data);
     }
 
@@ -57,7 +57,7 @@ protected:
     }
 
 private:
-    void handleChatMessage(const std::vector<uint8_t>& data) {
+    static void handleChatMessage(const FastVector::ByteVector& data) {
         try {
             auto message = MessageFactory::createMessage("ChatMessage");
             message->deserialize(data);

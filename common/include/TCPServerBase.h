@@ -60,6 +60,7 @@ protected:
 
     virtual void onClientDisconnected(const std::shared_ptr<TCPNetworkUtility::Session>& session) {
         LOG_INFO("Client disconnected: %s", session->connection()->remoteEndpoint().address().to_string().c_str());
+
     }
 
     void broadcastMessage(const FastVector::ByteVector& message) {
@@ -100,7 +101,7 @@ private:
                 [this](std::error_code ec, asio::ip::tcp::socket socket) {
                     if (!ec) {
                         auto session = TCPNetworkUtility::createSession(m_thread_pool->get_io_context(), socket);
-                        m_sessions[session->getConnectionUuid()] = session;
+                        m_sessions[session->getConnectionId()] = session;
 
                         onClientConnected(session);
 

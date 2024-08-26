@@ -1,25 +1,25 @@
-//
-// Created by maxim on 19.08.2024.
-//
-
 #pragma once
 
 #include <string>
-#include <sstream>
 #include <vector>
-#include <utility>
 #include <queue>
 #include <memory>
-#include <type_traits>
 #include <stdexcept>
 #include <cstdint>
 
-#include "Allocator.h"
+#include "ByteVector.h"
 
 namespace NetworkMessages
 {
+    class UserData
+    {
+    public:
 
-
+        std::string id;
+        std::string avatarLink;
+        bool isVrMessage = false;
+        FastVector::ByteVector last_message;
+    };
     class BinaryData
     {
     public:
@@ -31,10 +31,8 @@ namespace NetworkMessages
         [[nodiscard]] virtual ByteVector serialize() const = 0;
 
         // Deserialize from a byte vector
-        virtual void deserialize(const ByteVector &data) = 0;
+        virtual void deserialize(const ByteVector &data, size_t& offset) = 0;
 
-
-    protected:
         // Serialization helpers
         template<typename T>
         static void append_bytes(ByteVector &vec, const T &data)
@@ -54,26 +52,28 @@ namespace NetworkMessages
         {
             if constexpr (std::is_same_v<T, std::string>) {
                 return read_string_from_bytes(data, offset);
-            }
-            if (offset + sizeof(T) > data.size())
+            } else
             {
-                throw std::runtime_error("Not enough data to read");
+                if (offset + sizeof(T) > data.size())
+                {
+                    throw std::runtime_error("Not enough data to read");
+                }
+
+                // Check if the offset and sizeof(T) are too large for the system's ptrdiff_t
+                if (offset + sizeof(T) > static_cast<size_t>(std::numeric_limits<std::ptrdiff_t>::max()))
+                {
+                    throw std::runtime_error("Data size too large for this system");
+                }
+
+                // Use ptrdiff_t for iterator arithmetic
+                auto start = data.begin() + static_cast<std::ptrdiff_t>(offset);
+                auto end = start + static_cast<std::ptrdiff_t>(sizeof(T));
+
+                T value = from_bytes<T>(ByteVector(start, end));
+                from_network_order(value);  // Convert from network byte order to host byte order
+                offset += sizeof(T);
+                return value;
             }
-
-            // Check if the offset and sizeof(T) are too large for the system's ptrdiff_t
-            if (offset + sizeof(T) > static_cast<size_t>(std::numeric_limits<std::ptrdiff_t>::max()))
-            {
-                throw std::runtime_error("Data size too large for this system");
-            }
-
-            // Use ptrdiff_t for iterator arithmetic
-            auto start = data.begin() + static_cast<std::ptrdiff_t>(offset);
-            auto end = start + static_cast<std::ptrdiff_t>(sizeof(T));
-
-            T value = from_bytes<T>(ByteVector(start, end));
-            from_network_order(value);  // Convert from network byte order to host byte order
-            offset += sizeof(T);
-            return value;
         }
 
     private:
@@ -118,15 +118,11 @@ namespace NetworkMessages
 
         template<typename T>
         static T from_bytes(const ByteVector& bytes) {
-            if constexpr (std::is_same_v<T, std::string>) {
-                return string_from_bytes(bytes);
-            } else {
-                static_assert(std::is_trivially_copyable<T>::value, "not a TriviallyCopyable type");
-                T object;
-                std::memcpy(&object, bytes.data(), sizeof(T));
-                from_network_order(object);
-                return object;
-            }
+            static_assert(std::is_trivially_copyable<T>::value, "not a TriviallyCopyable type");
+            T object;
+            std::memcpy(&object, bytes.data(), sizeof(T));
+            from_network_order(object);
+            return object;
         }
 
         static void append_byte_vector(ByteVector &vec, const ByteVector &data)
@@ -212,23 +208,6 @@ namespace NetworkMessages
             return result;
         }
 
-        static std::string string_from_bytes(const ByteVector& bytes) {
-            if (bytes.size() < sizeof(uint32_t)) {
-                throw std::runtime_error("Invalid byte array for string deserialization");
-            }
-
-            // Read the length
-            uint32_t network_length;
-            std::memcpy(&network_length, bytes.data(), sizeof(uint32_t));
-            from_network_order(network_length);
-
-            if (bytes.size() < sizeof(uint32_t) + network_length) {
-                throw std::runtime_error("Byte array too short for string deserialization");
-            }
-
-            // Extract the string content
-            return {bytes.begin() + sizeof(uint32_t), bytes.begin() + sizeof(uint32_t) + network_length};
-        }
     };
 
     class HTTPBinaryData
@@ -330,9 +309,8 @@ namespace NetworkMessages
             return data;
         }
 
-        void deserialize(const ByteVector &data) override
+        void deserialize(const ByteVector &data, size_t& offset) override
         {
-            size_t offset = 0;
             Type = read_bytes<short>(data, offset);
         }
 
@@ -360,31 +338,27 @@ namespace NetworkMessages
             return data;
         }
 
-        void deserialize(const ByteVector &data) override
+        void deserialize(const ByteVector &data, size_t &offset) override
         {
-            if (data.size() < sizeof(short))
+            if (data.size() - offset < sizeof(short))
             {
                 throw std::runtime_error("Invalid data: too short to contain message type");
             }
             MessageTypeData typeData;
-            typeData.deserialize(data);
+            typeData.deserialize(data, offset);
             messageType = typeData.Type;
-            ByteVector payloadData(data.begin() + sizeof(short), data.end());
-            messagePayload.deserialize(payloadData);
+            messagePayload.deserialize(data, offset);
         }
 
-        [[nodiscard]] short getMessageType() const
-        { return messageType; }
-
-         T &getPayload()
-        { return messagePayload; }
+        [[nodiscard]] short getMessageType() const { return messageType; }
+        T &getPayload() { return messagePayload; }
 
     private:
-        short messageType;  // Stored in network byte order
+        short messageType;
         T messagePayload;
     };
 
-    class Error : BinaryData
+    class Error : public BinaryData
     {
     public:
         std::string ErrorMessage;
@@ -396,17 +370,45 @@ namespace NetworkMessages
             return data;
         }
 
-        void deserialize(const ByteVector &data) override
+        void deserialize(const ByteVector &data, size_t &offset) override
         {
-            size_t offset = 0;
             ErrorMessage = read_bytes<std::string>(data, offset);
         }
-
     };
 
-    template<typename T>
-    std::unique_ptr<BinaryMessage<T>> createMessage(short type, const T &payload)
+
+
+    class MessageFactory
     {
-        return std::make_unique<BinaryMessage<T>>(type, payload);
-    }
+    public:
+        template<typename T>
+        static std::unique_ptr<BinaryMessage<T>> createMessage(short type, const T &payload)
+        {
+            return std::make_unique<BinaryMessage<T>>(type, payload);
+        }
+
+        static short getMessageTypeFromBytes(const FastVector::ByteVector &data)
+        {
+            if (data.size() < sizeof(short))
+            {
+                throw std::runtime_error("Invalid message data: too short to contain message type");
+            }
+            MessageTypeData type;
+            size_t offset = 0;
+            type.deserialize(data, offset);
+
+            return type.Type;
+        }
+
+    private:
+        template<typename T>
+        static std::unique_ptr<BinaryMessage<T>>
+        createAndDeserialize(short type, const std::vector<BinaryData::byte> &data)
+        {
+            auto message = std::make_unique<BinaryMessage<T>>(type, T{});
+            size_t offset = 0;
+            message->deserialize(data, offset);
+            return message;
+        }
+    };
 }

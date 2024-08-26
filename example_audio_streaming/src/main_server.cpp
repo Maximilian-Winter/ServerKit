@@ -23,7 +23,7 @@ public:
     }
 
 protected:
-    void handleMessage(const std::vector<uint8_t>& message, const asio::ip::udp::endpoint& sender_endpoint) override {
+    void handleMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) override {
         // In this example, we don't expect to receive messages from clients
         std::cout << "Received unexpected message from " << sender_endpoint << std::endl;
     }
@@ -41,7 +41,7 @@ private:
 
         while (m_running && !feof(pipe)) {
             if (fread(buffer.data(), 1, buffer.size(), pipe) > 0) {
-                sendMessage(std::vector<uint8_t>(buffer.begin(), buffer.end()), client_endpoint);
+                sendMessage(FastVector::ByteVector(buffer.begin(), buffer.end()), client_endpoint);
             }
         }
 

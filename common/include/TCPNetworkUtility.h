@@ -6,19 +6,23 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <random>
 
-#include "Utilities.h"
 #include "Logger.h"
+#include "ByteVector.h"
 
 class TCPNetworkUtility {
 public:
     class Connection : public std::enable_shared_from_this<Connection> {
     public:
-        explicit Connection(asio::io_context& io_context)
-                : socket_(io_context), strand_(asio::make_strand(io_context)), read_buffer_() {}
+        using DisconnectCallback = std::function<void(const std::string&)>;
 
-        static std::shared_ptr<Connection> create(asio::io_context& io_context) {
-            return std::make_shared<Connection>(io_context);
+        explicit Connection(asio::io_context& io_context, std::string identifier)
+                : socket_(io_context), strand_(asio::make_strand(io_context)), identifier_(std::move(identifier)) {}
+
+
+        static std::shared_ptr<Connection> create(asio::io_context& io_context, std::string identifier) {
+            return std::make_shared<Connection>(io_context, std::move(identifier));
         }
 
         asio::ip::tcp::socket& socket() { return socket_; }
@@ -34,11 +38,11 @@ public:
             packet[1] = (size >> 8) & 0xFF;
             packet[2] = (size >> 16) & 0xFF;
             packet[3] = (size >> 24) & 0xFF;
-            std::copy(message.begin(), message.end(), packet.begin() + 4);
+            std::memcpy(packet.begin() + 4, message.begin(), message.size());
 
-            asio::post(strand_, [this, packet = std::move(packet)]() mutable {
+            asio::post(strand_, [this, packet]() mutable {
                 bool write_in_progress = !write_queue_.empty();
-                write_queue_.push_back(std::move(packet));
+                write_queue_.push_back(packet);
                 if (!write_in_progress) {
                     do_write();
                 }
@@ -47,6 +51,7 @@ public:
 
         void read(const std::function<void(const FastVector::ByteVector&)>& callback) {
             LOG_DEBUG("Connection::read called");
+
             asio::post(strand_, [this, callback]() mutable {
                 do_read_header(callback);
             });
@@ -55,12 +60,21 @@ public:
         asio::ip::tcp::endpoint remoteEndpoint() const {
             return socket_.remote_endpoint();
         }
+        void setOnDisconnectedCallback(DisconnectCallback callback) {
+            onDisconnected_ = std::move(callback);
+        }
 
         void close() {
             asio::post(strand_, [this, self = shared_from_this()]() {
+                // Call the onDisconnected callback if it's set
+                if (onDisconnected_) {
+                    onDisconnected_(identifier_);
+                }
+
                 if (!socket_.is_open()) {
                     return;  // Socket is already closed
                 }
+
 
                 std::error_code ec;
 
@@ -86,8 +100,8 @@ public:
 
     private:
         void do_write() {
-            auto& packet = write_queue_.front();
-            asio::async_write(socket_, asio::buffer(packet),
+            auto packet = std::make_shared<FastVector::ByteVector>(write_queue_.front());
+            asio::async_write(socket_, asio::buffer(*packet),
                               asio::bind_executor(strand_, [this, self = shared_from_this()](std::error_code ec, std::size_t length) {
                                   if (!ec) {
                                       LOG_DEBUG("Write completed. Length: %zu", length);
@@ -103,14 +117,19 @@ public:
         }
 
         void do_read_header(const std::function<void(const FastVector::ByteVector&)>& callback) {
-            asio::async_read(socket_, asio::buffer(header_buffer_, 4),
-                             asio::bind_executor(strand_, [this, self = shared_from_this(), callback]
+            auto header_buffer = std::make_shared<std::vector<uint8_t>>(4);
+            asio::async_read(socket_, asio::buffer(*header_buffer),
+                             asio::bind_executor(strand_, [this, self = shared_from_this(), callback, header_buffer]
                                      (std::error_code ec, std::size_t /*length*/) {
                                  if (!ec) {
-                                     uint32_t payload_size = header_buffer_[0] |
-                                                             (header_buffer_[1] << 8) |
-                                                             (header_buffer_[2] << 16) |
-                                                             (header_buffer_[3] << 24);
+                                     uint32_t payload_size = (*header_buffer)[0] |
+                                                             ((*header_buffer)[1] << 8) |
+                                                             ((*header_buffer)[2] << 16) |
+                                                             ((*header_buffer)[3] << 24);
+                                     LOG_DEBUG("Read header: %02x %02x %02x %02x",
+                                               (*header_buffer)[0], (*header_buffer)[1],
+                                               (*header_buffer)[2], (*header_buffer)[3]);
+                                     LOG_DEBUG("Interpreted payload size: %u", payload_size);
                                      do_read_body(payload_size, callback);
                                  } else if (ec == asio::error::eof) {
                                      LOG_INFO("Connection closed by peer");
@@ -123,25 +142,30 @@ public:
 
         void do_read_body(uint32_t payload_size, const std::function<void(const FastVector::ByteVector&)>& callback) {
             LOG_DEBUG("Connection::do_read_body called. Payload size: %u", payload_size);
-            read_buffer_.resize(payload_size);
-            asio::async_read(socket_, asio::buffer(read_buffer_),
-                             asio::bind_executor(strand_, [this, self = shared_from_this(), callback]
+            auto read_buffer = std::make_shared<FastVector::ByteVector>(payload_size);
+            asio::async_read(socket_, asio::buffer(*read_buffer),
+                             asio::bind_executor(strand_, [this, self = shared_from_this(), read_buffer, callback, payload_size]
                                      (std::error_code ec, std::size_t length) {
                                  if (!ec) {
                                      LOG_DEBUG("Read message size: %zu", length);
-
-                                     // Execute callback outside of strand to prevent potential deadlocks
-                                     asio::post([callback, message = read_buffer_]() {
-                                         LOG_DEBUG("Executing read callback");
-                                         try {
-                                             callback(message);
-                                         } catch (const std::exception& e) {
-                                             LOG_ERROR("Exception in read callback: %s", e.what());
-                                         }
-                                     });
-
-                                     // Continue reading
-                                     do_read_header(callback);
+                                     if (length == payload_size) {
+                                         // Execute callback outside of strand to prevent potential deadlocks
+                                         asio::post([this, callback, read_buffer]() {
+                                             LOG_DEBUG("Executing read callback");
+                                             try {
+                                                 callback(*read_buffer);
+                                             } catch (const std::exception& e) {
+                                                 LOG_ERROR("Exception in read callback: %s", e.what());
+                                             }
+                                             // Only start reading the next header after the callback has completed
+                                             asio::post(strand_, [this, callback]() {
+                                                 do_read_header(callback);
+                                             });
+                                         });
+                                     } else {
+                                         LOG_ERROR("Incomplete read. Expected %u bytes, got %zu", payload_size, length);
+                                         close();
+                                     }
                                  } else {
                                      LOG_ERROR("Error in read_body: %s", ec.message().c_str());
                                      close();
@@ -151,15 +175,15 @@ public:
 
         asio::ip::tcp::socket socket_;
         asio::strand<asio::io_context::executor_type> strand_;
-        FastVector::ByteVector read_buffer_;
-        uint8_t header_buffer_[4]{};
         std::deque<FastVector::ByteVector> write_queue_;
+        std::string identifier_;
+        DisconnectCallback onDisconnected_;
     };
 
     class Session : public std::enable_shared_from_this<Session> {
     public:
-        explicit Session(std::shared_ptr<Connection> connection)
-                : connection_(std::move(connection)), connection_uuid(Utilities::generateUuid()) {}
+        explicit Session(std::shared_ptr<Connection> connection, std::string identifier)
+                : connection_(std::move(connection)), connection_id(identifier) {}
 
         void start(const std::function<void(const FastVector::ByteVector&)>& messageHandler) {
             if (!connection_) {
@@ -177,9 +201,9 @@ public:
             }
         }
 
-        std::string getConnectionUuid()
+        std::string getConnectionId()
         {
-            return connection_uuid;
+            return connection_id;
         }
         std::shared_ptr<Connection> connection() const {
             return connection_;
@@ -193,14 +217,47 @@ public:
 
     private:
         std::shared_ptr<Connection> connection_;
-        std::string connection_uuid;
+        std::string connection_id;
     };
+    static std::string generateUuid() {
+        static std::random_device rd;
+        static std::mt19937_64 gen(rd());
+        static std::uniform_int_distribution<> dis(0, 255);
 
+        std::array<unsigned char, 16> bytes;
+        for (unsigned char& byte : bytes) {
+            byte = dis(gen);
+        }
+
+        // Set version to 4
+        bytes[6] = (bytes[6] & 0x0F) | 0x40;
+        // Set variant to 1
+        bytes[8] = (bytes[8] & 0x3F) | 0x80;
+
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
+
+        for (int i = 0; i < 16; ++i) {
+            if (i == 4 || i == 6 || i == 8 || i == 10) {
+                ss << '-';
+            }
+            ss << std::setw(2) << static_cast<int>(bytes[i]);
+        }
+
+        std::string uuid = ss.str();
+
+        return uuid;
+    }
     static std::shared_ptr<Connection> connect(asio::io_context& io_context,
                                                const std::string& host,
                                                const std::string& port,
-                                               std::function<void(std::error_code, std::shared_ptr<Connection>)> callback) {
-        auto connection = Connection::create(io_context);
+                                               std::function<void(std::error_code, std::shared_ptr<Connection>)> callback,
+                                               std::string identifier = "") {
+        if(identifier.empty())
+        {
+            identifier = generateUuid();
+        }
+        auto connection = Connection::create(io_context, identifier);
 
         asio::ip::tcp::resolver resolver(io_context);
         auto endpoints = resolver.resolve(host, port);
@@ -213,14 +270,35 @@ public:
         return connection;
     }
 
-    static std::shared_ptr<Connection> createConnection(asio::io_context& io_context) {
-        return Connection::create(io_context);
+    static std::shared_ptr<Connection> createConnection(asio::io_context& io_context, std::string identifier) {
+        return Connection::create(io_context, std::move(identifier));
     }
 
     static std::shared_ptr<Session> createSession(asio::io_context& io_context, asio::ip::tcp::socket& socket) {
-        auto connection = createConnection(io_context);
+        std::string id = generateUuid();
+        auto connection = createConnection(io_context, id);
         connection->socket() = std::move(socket);
-        return std::make_shared<Session>(connection);
+        return std::make_shared<Session>(connection, id);
     }
+
+    static std::shared_ptr<Session> createSession(asio::io_context& io_context,
+                                                  const std::string& host,
+                                                  const std::string& port,
+                                                  const std::function<void(std::error_code, std::shared_ptr<Connection>)>& callback) {
+        std::string id = generateUuid();
+        auto connection = Connection::create(io_context, id);
+
+        asio::ip::tcp::resolver resolver(io_context);
+        auto endpoints = resolver.resolve(host, port);
+
+        asio::async_connect(connection->socket(), endpoints,
+                            [connection, callback](const std::error_code& ec, const asio::ip::tcp::endpoint&) {
+                                callback(ec, connection);
+                            });
+
+        return std::make_shared<Session>(connection, id);
+    }
+
+
 };
 

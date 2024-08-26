@@ -71,7 +71,7 @@ public:
         }
     }
 
-    void sendMessage(const std::vector<uint8_t>& message) {
+    void sendMessage(const FastVector::ByteVector& message) {
         if (m_connected && m_session) {
             m_session->write(message);
         } else {
@@ -80,7 +80,7 @@ public:
     }
 
 protected:
-    virtual void handleMessage(const std::vector<uint8_t>& message) = 0;
+    virtual void handleMessage(const FastVector::ByteVector& message) = 0;
 
     virtual void onConnected() {
         LOG_INFO("Successfully connected to server");
@@ -116,9 +116,8 @@ protected:
 
     void startRead() {
         if (m_connected && m_session) {
-            m_session->connection()->read([this](const std::vector<uint8_t>& message) {
+            m_session->connection()->read([this](const FastVector::ByteVector& message) {
                 handleMessage(message);
-                startRead();  // Continue reading
             });
         }
     }

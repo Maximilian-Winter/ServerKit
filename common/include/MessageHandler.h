@@ -14,13 +14,13 @@
 template<typename EndpointType>
 class MessageHandler {
 public:
-    using MessageCallback = std::function<void(const EndpointType&, const std::vector<uint8_t>&)>;
+    using MessageCallback = std::function<void(const EndpointType&, const FastVector::ByteVector&)>;
 
     void registerHandler(short messageType, MessageCallback callback) {
         m_handlers[messageType] = std::move(callback);
     }
 
-    void handleMessage(const EndpointType& endpoint, const std::vector<uint8_t>& data) {
+    void handleMessage(const EndpointType& endpoint, const FastVector::ByteVector& data) {
         try {
             NetworkMessages::MessageTypeData typeData;
             typeData.deserialize(data);

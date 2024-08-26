@@ -15,7 +15,7 @@ int main() {
         HTTPBody httpBody;
         httpBody.setContent(body);
         response.setBody(httpBody);
-        std::vector<uint8_t> serializedBody = httpBody.serialize();
+        FastVector::ByteVector serializedBody = httpBody.serialize();
         response.addHeader("Content-Length", std::to_string(serializedBody.size()));
         return response;
     });
