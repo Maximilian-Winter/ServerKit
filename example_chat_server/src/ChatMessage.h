@@ -26,8 +26,7 @@ namespace NetworkMessages {
             return data;
         }
 
-        void deserialize(const ByteVector& data) override {
-            size_t offset = 0;
+        void deserialize(const ByteVector& data, size_t& offset) override {
             username = read_bytes<std::string>(data, offset);
             message = read_bytes<std::string>(data, offset);
         }

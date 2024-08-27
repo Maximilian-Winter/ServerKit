@@ -60,7 +60,8 @@ private:
         LOG_DEBUG("handleMessage called. Data size: %zu", data.size());
         try {
             auto message = NetworkMessages::BinaryMessage<NetworkMessages::ChatMessage>(0, NetworkMessages::ChatMessage());
-            message.deserialize(data);
+            size_t offset = 0;
+            message.deserialize(data, offset);
 
             const auto& chatMessage = message.getPayload();
             std::cout << chatMessage.username << ": " << chatMessage.message << std::endl;
@@ -72,7 +73,7 @@ private:
 
     void sendChatMessage(const std::string& message) {
         NetworkMessages::ChatMessage chatMessage(m_username, message);
-        auto binaryMessage = NetworkMessages::createMessage(0, chatMessage);
+        auto binaryMessage = NetworkMessages::MessageFactory::createMessage(0, chatMessage);
         sendMessage(binaryMessage->serialize());
     }
 

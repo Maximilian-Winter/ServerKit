@@ -23,7 +23,8 @@ public:
     void handleMessage(const EndpointType& endpoint, const FastVector::ByteVector& data) {
         try {
             NetworkMessages::MessageTypeData typeData;
-            typeData.deserialize(data);
+            size_t offset = 0;
+            typeData.deserialize(data, offset);
             short messageType = typeData.Type;
 
             auto it = m_handlers.find(messageType);

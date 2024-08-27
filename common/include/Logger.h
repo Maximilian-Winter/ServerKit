@@ -11,6 +11,7 @@
 #include <memory>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 class AsyncLogger {
 public:

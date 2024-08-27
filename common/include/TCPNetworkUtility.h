@@ -10,6 +10,7 @@
 
 #include "Logger.h"
 #include "ByteVector.h"
+#include "Utilities.h"
 
 class TCPNetworkUtility {
 public:
@@ -219,35 +220,7 @@ public:
         std::shared_ptr<Connection> connection_;
         std::string connection_id;
     };
-    static std::string generateUuid() {
-        static std::random_device rd;
-        static std::mt19937_64 gen(rd());
-        static std::uniform_int_distribution<> dis(0, 255);
 
-        std::array<unsigned char, 16> bytes;
-        for (unsigned char& byte : bytes) {
-            byte = dis(gen);
-        }
-
-        // Set version to 4
-        bytes[6] = (bytes[6] & 0x0F) | 0x40;
-        // Set variant to 1
-        bytes[8] = (bytes[8] & 0x3F) | 0x80;
-
-        std::stringstream ss;
-        ss << std::hex << std::setfill('0');
-
-        for (int i = 0; i < 16; ++i) {
-            if (i == 4 || i == 6 || i == 8 || i == 10) {
-                ss << '-';
-            }
-            ss << std::setw(2) << static_cast<int>(bytes[i]);
-        }
-
-        std::string uuid = ss.str();
-
-        return uuid;
-    }
     static std::shared_ptr<Connection> connect(asio::io_context& io_context,
                                                const std::string& host,
                                                const std::string& port,
@@ -255,7 +228,7 @@ public:
                                                std::string identifier = "") {
         if(identifier.empty())
         {
-            identifier = generateUuid();
+            identifier = Utilities::generateUuid();
         }
         auto connection = Connection::create(io_context, identifier);
 
@@ -275,7 +248,7 @@ public:
     }
 
     static std::shared_ptr<Session> createSession(asio::io_context& io_context, asio::ip::tcp::socket& socket) {
-        std::string id = generateUuid();
+        std::string id = Utilities::generateUuid();
         auto connection = createConnection(io_context, id);
         connection->socket() = std::move(socket);
         return std::make_shared<Session>(connection, id);
@@ -285,7 +258,7 @@ public:
                                                   const std::string& host,
                                                   const std::string& port,
                                                   const std::function<void(std::error_code, std::shared_ptr<Connection>)>& callback) {
-        std::string id = generateUuid();
+        std::string id = Utilities::generateUuid();
         auto connection = Connection::create(io_context, id);
 
         asio::ip::tcp::resolver resolver(io_context);
