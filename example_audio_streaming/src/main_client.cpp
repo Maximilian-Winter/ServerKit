@@ -1,86 +1,140 @@
-// Client: UDPAudioClient.cpp
-#include "UDPClientBase.h"
-#include <cstdio>
 #include <iostream>
-#include <thread>
-#include <atomic>
+#include <cstdio>
+#include <string>
+#include <vector>
+#include <asio.hpp>
+#include <portaudio.h>
+#include <queue>
+#include <mutex>
 
-class UDPAudioClient : public UDPClientBase {
+using asio::ip::udp;
+
+class AudioPlayer {
 public:
-    explicit UDPAudioClient(const std::string& config_file)
-            : UDPClientBase(config_file), m_pipe(nullptr), m_running(false) {}
+    AudioPlayer() : stream_(nullptr) {}
 
-    ~UDPAudioClient() override {
-        stopPlayback();
-    }
-
-    void startPlayback() {
-        m_running = true;
-        m_playbackThread = std::thread(&UDPAudioClient::playbackLoop, this);
-    }
-
-    void stopPlayback() {
-        m_running = false;
-        if (m_playbackThread.joinable()) {
-            m_playbackThread.join();
+    bool initialize() {
+        PaError err = Pa_Initialize();
+        if (err != paNoError) {
+            std::cerr << "PortAudio error: " << Pa_GetErrorText(err) << std::endl;
+            return false;
         }
-        if (m_pipe) {
-            _pclose(m_pipe);
-            m_pipe = nullptr;
+
+        err = Pa_OpenDefaultStream(&stream_, 0, 2, paInt16, 44100, paFramesPerBufferUnspecified,
+                                   audioCallback, this);
+        if (err != paNoError) {
+            std::cerr << "PortAudio error: " << Pa_GetErrorText(err) << std::endl;
+            Pa_Terminate();
+            return false;
         }
-    }
 
-protected:
-    void handleMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) override {
-        if (m_pipe && m_running) {
-            fwrite(message.data(), 1, message.size(), m_pipe);
-            fflush(m_pipe);
+        err = Pa_StartStream(stream_);
+        if (err != paNoError) {
+            std::cerr << "PortAudio error: " << Pa_GetErrorText(err) << std::endl;
+            Pa_CloseStream(stream_);
+            Pa_Terminate();
+            return false;
         }
+
+        return true;
     }
 
-    void onConnected() override {
-        UDPClientBase::onConnected();
-        std::cout << "Connected to server. Starting audio playback." << std::endl;
-        startPlayback();
+    void addAudioData(const char* data, size_t size) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        audioBuffer_.insert(audioBuffer_.end(), data, data + size);
     }
 
-    void onDisconnected() override {
-        stopPlayback();
-        UDPClientBase::onDisconnected();
-        std::cout << "Disconnected from server. Stopped audio playback." << std::endl;
+    ~AudioPlayer() {
+        if (stream_) {
+            Pa_StopStream(stream_);
+            Pa_CloseStream(stream_);
+        }
+        Pa_Terminate();
     }
 
 private:
-    void playbackLoop() {
-        m_pipe = _popen("ffplay -f s16le -ar 44100 -ac 2 -i pipe:0", "wb");
-        if (!m_pipe) {
-            std::cerr << "Error opening ffplay pipe" << std::endl;
-            return;
+    static int audioCallback(const void* inputBuffer, void* outputBuffer,
+                             unsigned long framesPerBuffer,
+                             const PaStreamCallbackTimeInfo* timeInfo,
+                             PaStreamCallbackFlags statusFlags,
+                             void* userData) {
+        AudioPlayer* player = static_cast<AudioPlayer*>(userData);
+        int16_t* out = static_cast<int16_t*>(outputBuffer);
+
+        std::lock_guard<std::mutex> lock(player->mutex_);
+        size_t bytesToCopy = std::min(static_cast<unsigned long>(player->audioBuffer_.size()), framesPerBuffer * 4);
+        if (bytesToCopy > 0) {
+            memcpy(out, player->audioBuffer_.data(), bytesToCopy);
+            player->audioBuffer_.erase(player->audioBuffer_.begin(), player->audioBuffer_.begin() + bytesToCopy);
+        } else {
+            memset(out, 0, framesPerBuffer * 4);
         }
 
-        while (m_running) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-
-        _pclose(m_pipe);
-        m_pipe = nullptr;
+        return paContinue;
     }
 
-    FILE* m_pipe;
-    std::atomic<bool> m_running;
-    std::thread m_playbackThread;
+    PaStream* stream_;
+    std::vector<char> audioBuffer_;
+    std::mutex mutex_;
 };
 
-int main() {
+class UDPAudioClient {
+public:
+    UDPAudioClient(asio::io_context& io_context, const std::string& host, const std::string& port)
+            : socket_(io_context, udp::endpoint(udp::v4(), 0)),
+              resolver_(io_context) {
+        auto endpoints = resolver_.resolve(udp::v4(), host, port);
+        server_endpoint_ = *endpoints.begin();
+    }
+
+    bool start() {
+        if (!audioPlayer_.initialize()) {
+            return false;
+        }
+
+        // Send initial packet to server
+        std::string init_msg = "Hello Server";
+        socket_.send_to(asio::buffer(init_msg), server_endpoint_);
+
+        start_receive();
+        return true;
+    }
+
+private:
+    void start_receive() {
+        socket_.async_receive_from(
+                asio::buffer(recv_buffer_), server_endpoint_,
+                [this](std::error_code ec, std::size_t bytes_recvd) {
+                    if (!ec && bytes_recvd > 0) {
+                        audioPlayer_.addAudioData(recv_buffer_.data(), bytes_recvd);
+                        start_receive(); // Continue receiving
+                    } else {
+                        std::cerr << "Error: " << ec.message() << std::endl;
+                    }
+                });
+    }
+
+    udp::socket socket_;
+    udp::resolver resolver_;
+    udp::endpoint server_endpoint_;
+    std::array<char, 65536> recv_buffer_;
+    AudioPlayer audioPlayer_;
+};
+
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <host> <port>" << std::endl;
+        return 1;
+    }
+
     try {
-        UDPAudioClient client("client_config.json");
-        client.connect();
+        asio::io_context io_context;
+        UDPAudioClient client(io_context, argv[1], argv[2]);
 
-        std::cout << "Press Enter to stop the client..." << std::endl;
-        std::cin.get();
-
-        client.disconnect();
-    } catch (const std::exception& e) {
+        if (client.start()) {
+            io_context.run();
+        }
+    } catch (std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;
     }
 

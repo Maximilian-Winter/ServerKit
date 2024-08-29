@@ -4,6 +4,15 @@ project(audio_server)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Ensure vcpkg is used
+if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+            CACHE STRING "")
+endif()
+
+# Find PortAudio package
+find_package(portaudio CONFIG REQUIRED)
+
 # Chat Server
 add_executable(audio_server
         src/main_server.cpp
@@ -24,7 +33,6 @@ set_target_properties(audio_server PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-
 # Chat Client
 add_executable(audio_client
         src/main_client.cpp
@@ -37,6 +45,7 @@ target_include_directories(audio_client PRIVATE
 target_link_libraries(audio_client PRIVATE
         common
         ${COMMON_LINK_LIBRARIES}
+        portaudio
 )
 
 target_compile_options(audio_client PRIVATE ${COMMON_COMPILE_OPTIONS})
@@ -44,4 +53,3 @@ target_compile_options(audio_client PRIVATE ${COMMON_COMPILE_OPTIONS})
 set_target_properties(audio_client PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
-

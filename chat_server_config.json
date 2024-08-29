@@ -1,6 +1,6 @@
 {
   "server_host": "127.0.0.1",
-  "server_port": 8080,
+  "server_port": 12345,
   "thread_count": 4,
   "log_level": "INFO",
   "log_file": "chat_server.log",

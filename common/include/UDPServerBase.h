@@ -1,7 +1,3 @@
-//
-// Created by maxim on 23.08.2024.
-//
-
 #pragma once
 
 #include "AsioThreadPool.h"
@@ -13,15 +9,13 @@
 #include <asio.hpp>
 #include <memory>
 #include <string>
-#include <functional>
-#include <atomic>
 #include <unordered_map>
-
+#include <functional>
 
 class UDPServerBase {
 public:
     explicit UDPServerBase(const std::string& config_file)
-            : m_config(), m_thread_pool(nullptr), m_session(nullptr) {
+        : m_config(), m_thread_pool(nullptr), m_endpoint(nullptr) {
         if (!m_config.load(config_file)) {
             LOG_FATAL("Failed to load configuration file: %s", config_file.c_str());
             throw std::runtime_error("Failed to load configuration file");
@@ -30,7 +24,9 @@ public:
         initializeServer();
     }
 
-    virtual ~UDPServerBase() = default;
+    virtual ~UDPServerBase() {
+        stop();
+    }
 
     void start() {
         if (!m_thread_pool) {
@@ -45,8 +41,8 @@ public:
 
     void stop() {
         LOG_INFO("Stopping UDP server");
-        if (m_session) {
-            m_session->close();
+        if (m_endpoint) {
+            m_endpoint->socket().close();
         }
         if (m_thread_pool) {
             m_thread_pool->stop();
@@ -54,14 +50,10 @@ public:
     }
 
 protected:
-    virtual void handleMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) = 0;
+    virtual void handleMessage(const asio::ip::udp::endpoint& sender, const FastVector::ByteVector& message) = 0;
 
-    void sendMessage(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& recipient_endpoint) {
-        if (m_session) {
-            m_session->send_to(message, recipient_endpoint);
-        } else {
-            LOG_ERROR("Cannot send message: UDP session not set up");
-        }
+    void sendTo(const asio::ip::udp::endpoint& recipient, const FastVector::ByteVector& message) {
+        UDPNetworkUtility::sendTo(m_endpoint, recipient, message);
     }
 
     Config& getConfig() { return m_config; }
@@ -79,27 +71,23 @@ private:
 
         logger.setLogLevel(AsyncLogger::parseLogLevel(log_level));
         logger.addDestination(std::make_shared<AsyncLogger::ConsoleDestination>());
-        logger.addDestination(std::make_shared<AsyncLogger::FileDestination>(log_file, log_file_size_in_mb * (1024 * 1024))); // Convert from megabytes to bytes.
+        logger.addDestination(std::make_shared<AsyncLogger::FileDestination>(log_file, log_file_size_in_mb * (1024 * 1024)));
 
         m_thread_pool = std::make_unique<AsioThreadPool>(thread_count);
 
-        asio::ip::udp::endpoint endpoint(asio::ip::make_address(m_host), m_port);
-        m_session = UDPNetworkUtility::createSession(m_thread_pool->get_io_context());
-        m_session->connection()->socket().open(endpoint.protocol());
-        m_session->connection()->socket().bind(endpoint);
+        m_endpoint = UDPNetworkUtility::createEndpoint(m_thread_pool->get_io_context(), m_host, m_port);
     }
 
     void startReceive() {
-        if (m_session) {
-            m_session->start([this](const FastVector::ByteVector& message, const asio::ip::udp::endpoint& sender_endpoint) {
-                handleMessage(message, sender_endpoint);
+        UDPNetworkUtility::receiveFrom(m_endpoint, 
+            [this](const asio::ip::udp::endpoint& sender, const FastVector::ByteVector& message) {
+                handleMessage(sender, message);
             });
-        }
     }
 
     Config m_config;
     std::unique_ptr<AsioThreadPool> m_thread_pool;
-    std::shared_ptr<UDPNetworkUtility::Session> m_session;
+    std::shared_ptr<UDPNetworkUtility::Endpoint> m_endpoint;
     std::string m_host;
     int m_port{};
 };

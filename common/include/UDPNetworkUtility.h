@@ -1,7 +1,3 @@
-//
-// Created by maxim on 23.08.2024.
-//
-
 #pragma once
 
 #include <asio.hpp>
@@ -10,186 +6,81 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <random>
 
 #include "Logger.h"
-
+#include "ByteVector.h"
 
 class UDPNetworkUtility {
 public:
-    class Connection : public std::enable_shared_from_this<Connection> {
+    class Endpoint {
     public:
-        explicit Connection(asio::io_context& io_context)
-                : socket_(io_context), strand_(asio::make_strand(io_context)), read_buffer_(65507) {}
-
-        static std::shared_ptr<Connection> create(asio::io_context& io_context) {
-            return std::make_shared<Connection>(io_context);
-        }
+        Endpoint(asio::io_context& io_context, const asio::ip::udp::endpoint& endpoint)
+            : socket_(io_context, endpoint) {}
 
         asio::ip::udp::socket& socket() { return socket_; }
-
-        void send_to(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& endpoint) {
-            LOG_DEBUG("Connection::send_to called. Message size: %zu", message.size());
-
-            asio::post(strand_, [this, message, endpoint]() {
-                bool write_in_progress = !write_queue_.empty();
-                write_queue_.emplace_back(message, endpoint);
-                if (!write_in_progress) {
-                    do_write();
-                }
-            });
-        }
-
-        void receive(const std::function<void(const FastVector::ByteVector&, const asio::ip::udp::endpoint&)>& callback) {
-            LOG_DEBUG("Connection::receive called");
-            asio::post(strand_, [this, callback]() mutable {
-                do_receive(callback);
-            });
-        }
-
-        void close() {
-            asio::post(strand_, [this, self = shared_from_this()]() {
-                if (!socket_.is_open()) {
-                    return;  // Socket is already closed
-                }
-
-                std::error_code ec;
-
-                // Cancel any pending asynchronous operations
-                socket_.cancel(ec);
-                if (ec) {
-                    LOG_ERROR("Error cancelling pending operations: %s", ec.message().c_str());
-                }
-
-                // Shutdown the socket
-                socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
-                if (ec && ec != asio::error::not_connected) {
-                    LOG_ERROR("Error shutting down socket: %s", ec.message().c_str());
-                }
-
-                // Close the socket
-                socket_.close(ec);
-                if (ec) {
-                    LOG_ERROR("Error closing socket: %s", ec.message().c_str());
-                }
-            });
-        }
+        const asio::ip::udp::endpoint& endpoint() const { return socket_.local_endpoint(); }
 
     private:
-        void do_write() {
-            auto& [message, endpoint] = write_queue_.front();
-            socket_.async_send_to(asio::buffer(message), endpoint,
-                                  asio::bind_executor(strand_, [this, self = shared_from_this()](std::error_code ec, std::size_t length) {
-                                      if (!ec) {
-                                          LOG_DEBUG("UDP Write completed. Length: %zu", length);
-                                          write_queue_.pop_front();
-                                          if (!write_queue_.empty()) {
-                                              do_write();
-                                          }
-                                      } else {
-                                          LOG_ERROR("Error in UDP write: %s", ec.message().c_str());
-                                      }
-                                  }));
-        }
-
-        void do_receive(const std::function<void(const FastVector::ByteVector&, const asio::ip::udp::endpoint&)>& callback) {
-            socket_.async_receive_from(asio::buffer(read_buffer_), sender_endpoint_,
-                                       asio::bind_executor(strand_, [this, self = shared_from_this(), callback]
-                                               (std::error_code ec, std::size_t length) {
-                                           if (!ec) {
-                                               LOG_DEBUG("UDP Read message size: %zu", length);
-
-                                               // Execute callback outside of strand to prevent potential deadlocks
-                                               asio::post([callback, message = FastVector::ByteVector(read_buffer_.begin(), read_buffer_.begin() + length), sender_endpoint = sender_endpoint_]() {
-                                                   LOG_DEBUG("Executing UDP read callback");
-                                                   try {
-                                                       callback(message, sender_endpoint);
-                                                   } catch (const std::exception& e) {
-                                                       LOG_ERROR("Exception in UDP read callback: %s", e.what());
-                                                   }
-                                               });
-
-                                               // Continue reading
-                                               do_receive(callback);
-                                           } else {
-                                               LOG_ERROR("Error in UDP receive: %s", ec.message().c_str());
-                                           }
-                                       }));
-        }
-
         asio::ip::udp::socket socket_;
-        asio::strand<asio::io_context::executor_type> strand_;
-        FastVector::ByteVector read_buffer_;
-        asio::ip::udp::endpoint sender_endpoint_;
-        std::deque<std::pair<FastVector::ByteVector, asio::ip::udp::endpoint>> write_queue_;
     };
 
-    class Session : public std::enable_shared_from_this<Session> {
-    public:
-        explicit Session(std::shared_ptr<Connection> connection)
-                : connection_(std::move(connection)), connection_uuid(Utilities::generateUuid()) {}
-
-        void start(const std::function<void(const FastVector::ByteVector&, const asio::ip::udp::endpoint&)>& messageHandler) {
-            if (!connection_) {
-                LOG_ERROR("Attempting to start UDP session with null connection");
-                return;
-            }
-            connection_->receive(messageHandler);
-        }
-
-        void send_to(const FastVector::ByteVector& message, const asio::ip::udp::endpoint& endpoint) {
-            if (connection_) {
-                connection_->send_to(message, endpoint);
-            } else {
-                LOG_ERROR("Attempting to write to null UDP connection");
-            }
-        }
-
-        std::string getConnectionUuid()
-        {
-            return connection_uuid;
-        }
-
-        std::shared_ptr<Connection> connection() const {
-            return connection_;
-        }
-
-        void close() {
-            if (connection_) {
-                connection_->close();
-            }
-        }
-
-    private:
-        std::shared_ptr<Connection> connection_;
-        std::string connection_uuid;
-    };
-
-    static std::shared_ptr<Connection> connect(asio::io_context& io_context,
-                                                      const std::string& host,
-                                                      const std::string& port,
-                                                      std::function<void(std::error_code, std::shared_ptr<Connection>)> callback) {
-        auto connection = Connection::create(io_context);
-
-        asio::ip::udp::resolver resolver(io_context);
-        auto endpoints = resolver.resolve(host, port);
-
-        connection->socket().async_connect(*endpoints.begin(),
-                                           [connection, callback](const std::error_code& ec) {
-                                               callback(ec, connection);
-                                           });
-
-        return connection;
+    static std::shared_ptr<Endpoint> createEndpoint(asio::io_context& io_context, const std::string& address, unsigned short port) {
+        asio::ip::udp::endpoint endpoint(asio::ip::make_address(address), port);
+        return std::make_shared<Endpoint>(io_context, endpoint);
     }
 
-    static std::shared_ptr<Connection> createConnection(asio::io_context& io_context) {
-        return Connection::create(io_context);
+    static void sendTo(std::shared_ptr<Endpoint> sender, const asio::ip::udp::endpoint& recipient, const FastVector::ByteVector& message) {
+        sender->socket().async_send_to(asio::buffer(message), recipient,
+            [](std::error_code ec, std::size_t /*bytes_sent*/) {
+                if (ec) {
+                    LOG_ERROR("Error sending UDP message: %s", ec.message().c_str());
+                }
+            });
     }
 
-    static std::shared_ptr<Session> createSession(asio::io_context& io_context) {
-        auto connection = createConnection(io_context);
-        connection->socket().open(asio::ip::udp::v4());
-        return std::make_shared<Session>(connection);
+    static void receiveFrom(std::shared_ptr<Endpoint> receiver, 
+                            std::function<void(const asio::ip::udp::endpoint&, const FastVector::ByteVector&)> callback) {
+        auto buffer = std::make_shared<FastVector::ByteVector>(65536); // Max UDP packet size
+        auto sender_endpoint = std::make_shared<asio::ip::udp::endpoint>();
+
+        receiver->socket().async_receive_from(asio::buffer(*buffer), *sender_endpoint,
+            [receiver, buffer, sender_endpoint, callback](std::error_code ec, std::size_t bytes_recvd) {
+                if (!ec) {
+                    buffer->resize(bytes_recvd);
+                    callback(*sender_endpoint, *buffer);
+                    receiveFrom(receiver, callback); // Continue receiving
+                } else {
+                    LOG_ERROR("Error receiving UDP message: %s", ec.message().c_str());
+                }
+            });
+    }
+
+    static std::string generateUuid() {
+        static std::random_device rd;
+        static std::mt19937_64 gen(rd());
+        static std::uniform_int_distribution<> dis(0, 255);
+
+        std::array<unsigned char, 16> bytes;
+        for (unsigned char& byte : bytes) {
+            byte = dis(gen);
+        }
+
+        // Set version to 4
+        bytes[6] = (bytes[6] & 0x0F) | 0x40;
+        // Set variant to 1
+        bytes[8] = (bytes[8] & 0x3F) | 0x80;
+
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
+
+        for (int i = 0; i < 16; ++i) {
+            if (i == 4 || i == 6 || i == 8 || i == 10) {
+                ss << '-';
+            }
+            ss << std::setw(2) << static_cast<int>(bytes[i]);
+        }
+
+        return ss.str();
     }
 };
-
-

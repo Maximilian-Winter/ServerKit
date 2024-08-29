@@ -11,7 +11,6 @@
 #include <memory>
 #include <iostream>
 #include <fstream>
-#include <sstream>
 
 class AsyncLogger {
 public:
@@ -53,9 +52,9 @@ public:
         }
 
         void write(const LogEntry& entry) override {
-            if (m_logFile.tellp() >= m_maxFileSize) {
-                rotateLogFile();
-            }
+            /*if (m_logFile.tellp() >= m_maxFileSize) {
+                //rotateLogFile();
+            }*/
             m_logFile << formatLogEntry(entry) << std::endl;
         }
 
@@ -161,25 +160,7 @@ public:
     }
 
 private:
-    void loggerThreadFunction() {
-        while (true) {
-            std::unique_lock<std::mutex> lock(m_queueMutex);
-            m_condition.wait(lock, [this] { return !m_logQueue.empty() || m_stopFlag; });
-
-            if (m_stopFlag && m_logQueue.empty()) {
-                break;
-            }
-
-            LogEntry entry = std::move(m_logQueue.front());
-            m_logQueue.pop();
-            lock.unlock();
-
-            std::lock_guard<std::mutex> destLock(m_destinationsMutex);
-            for (const auto& dest : m_destinations) {
-                dest->write(entry);
-            }
-        }
-    }
+    void loggerThreadFunction();
 
     static std::string formatLogEntry(const LogEntry& entry) {
         std::ostringstream oss;
