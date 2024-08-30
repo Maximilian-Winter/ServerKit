@@ -67,3 +67,7 @@ Thumbs.db
 
 # Additional
 
+/example_audio_streaming/src/text_test/cmake-build-debug
+/example_audio_streaming/src/text_test/cmake-build-release
+/example_audio_streaming/src/voice/cmake-build-debug
+/example_audio_streaming/src/voice/cmake-build-release

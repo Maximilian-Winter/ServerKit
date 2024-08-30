@@ -1,6 +1,3 @@
-//
-// Created by maxim on 29.08.2024.
-//
 #include <iostream>
 #include <string>
 #include <asio.hpp>
@@ -39,14 +36,15 @@ private:
 
     void stream_next_char() {
         if (current_pos_ < message_.length()) {
-            std::string char_to_send(1, message_[current_pos_]);
+            // Store the current character in a member variable
+            current_char_ = message_[current_pos_];
             socket_.async_send_to(
-                asio::buffer(char_to_send), remote_endpoint_,
+                asio::buffer(&current_char_, 1), remote_endpoint_,
                 [this](std::error_code ec, std::size_t bytes_sent) {
                     if (!ec) {
-                        std::cout << "Sent: " << message_[current_pos_] << std::endl;
+                        std::cout << "Sent: " << current_char_ << std::endl;
                         current_pos_++;
-                        timer_.expires_after(std::chrono::seconds(1));
+                        timer_.expires_after(std::chrono::milliseconds(500));
                         timer_.async_wait([this](std::error_code ec) {
                             if (!ec) {
                                 stream_next_char();
@@ -67,6 +65,7 @@ private:
     asio::steady_timer timer_;
     std::string message_;
     size_t current_pos_;
+    char current_char_; // Added to store the current character
 };
 
 int main() {
