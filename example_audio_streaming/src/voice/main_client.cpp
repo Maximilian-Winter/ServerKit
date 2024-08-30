@@ -154,6 +154,7 @@ public:
 
 private:
     void start_receive() {
+        recv_buffer_.resize(1024); // Preallocate buffer with appropriate size
         socket_.async_receive_from(
             asio::buffer(recv_buffer_), server_endpoint_,
             [this](std::error_code ec, std::size_t bytes_recvd) {
@@ -171,14 +172,15 @@ private:
         send_timer_.expires_after(std::chrono::milliseconds(20)); // 50Hz send rate
         send_timer_.async_wait([this](std::error_code ec) {
             if (!ec) {
-                std::vector<char> audio_data = audio_manager_.getInputData();
-                if (!audio_data.empty()) {
+                auto audio_data = std::make_shared<std::vector<char>>(audio_manager_.getInputData());
+                if (!audio_data->empty()) {
                     socket_.async_send_to(
-                        asio::buffer(audio_data), server_endpoint_,
-                        [this](std::error_code ec, std::size_t bytes_sent) {
+                        asio::buffer(*audio_data), server_endpoint_,
+                        [this, audio_data](std::error_code ec, std::size_t bytes_sent) {
                             if (ec) {
                                 std::cerr << "Send error: " << ec.message() << std::endl;
                             }
+                            // The audio_data shared_ptr keeps the vector alive until this callback completes
                         });
                 }
                 start_send();
@@ -189,9 +191,10 @@ private:
     udp::socket socket_;
     udp::resolver resolver_;
     udp::endpoint server_endpoint_;
-    std::array<char, 1024> recv_buffer_;
+
     AudioManager audio_manager_;
     asio::steady_timer send_timer_;
+    std::vector<char> recv_buffer_; // Preallocated receive buffer
 };
 
 int main(int argc, char* argv[]) {
