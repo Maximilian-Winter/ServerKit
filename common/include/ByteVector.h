@@ -24,8 +24,8 @@ public:
     using iterator = pointer;
     using const_iterator = const_pointer;
 
-    static constexpr size_type CHUNK_SIZE = 2048;  // Size of each memory chunk
-    static constexpr size_type SMALL_OBJECT_THRESHOLD = 256;  // Threshold for small object optimization
+    static constexpr size_type CHUNK_SIZE = 32768;  // Size of each memory chunk
+    static constexpr size_type SMALL_OBJECT_THRESHOLD = 4096;  // Threshold for small object optimization
 
     ByteVector() : size_(0), capacity_(SMALL_OBJECT_THRESHOLD), data_(small_buffer_) {}
 

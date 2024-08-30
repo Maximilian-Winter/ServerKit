@@ -15,7 +15,7 @@
 class UDPServerBase {
 public:
     explicit UDPServerBase(const std::string& config_file)
-        : m_config(), m_thread_pool(nullptr), m_endpoint(nullptr) {
+        : m_thread_pool(nullptr), m_endpoint(nullptr) {
         if (!m_config.load(config_file)) {
             LOG_FATAL("Failed to load configuration file: %s", config_file.c_str());
             throw std::runtime_error("Failed to load configuration file");
@@ -28,13 +28,13 @@ public:
         stop();
     }
 
-    void start() {
+    virtual void start() {
         if (!m_thread_pool) {
             LOG_ERROR("Thread pool not initialized");
             return;
         }
 
-        LOG_INFO("Starting UDP server on %s:%d", m_host.c_str(), m_port);
+        //LOG_INFO("Starting UDP server on %s:%d", m_host.c_str(), m_port);
         startReceive();
         m_thread_pool->run();
     }

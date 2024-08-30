@@ -41,7 +41,7 @@ public:
 
     static void receiveFrom(std::shared_ptr<Endpoint> receiver, 
                             std::function<void(const asio::ip::udp::endpoint&, const FastVector::ByteVector&)> callback) {
-        auto buffer = std::make_shared<FastVector::ByteVector>(65536); // Max UDP packet size
+        auto buffer = std::make_shared<FastVector::ByteVector>(512); // Max UDP packet size
         auto sender_endpoint = std::make_shared<asio::ip::udp::endpoint>();
 
         receiver->socket().async_receive_from(asio::buffer(*buffer), *sender_endpoint,

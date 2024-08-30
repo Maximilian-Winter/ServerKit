@@ -28,7 +28,7 @@ public:
         stop();
     }
 
-    void start() {
+    virtual void start() {
         if (!m_thread_pool) {
             LOG_ERROR("Thread pool not initialized");
             return;
